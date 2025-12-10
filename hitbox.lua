@@ -1,5 +1,6 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local localPlayer = Players.LocalPlayer
 
 local DefaultHRPSize = Vector3.new(2,2,1)
@@ -31,6 +32,7 @@ end)
 local OriginalCollides = {}
 local noclipRunConn = nil
 local charDescAddedConn = nil
+local Minimized = false
 
 local function safeSetCanCollide(part, val)
     if part and part:IsA("BasePart") then
@@ -130,7 +132,63 @@ local function UpdateHitbox(player)
     end
 end
 
-local gui
+local gui, Frame, MinContainer, MinButton, MinTouchHit, ScrollFrame
+
+local function setVisibility(visible)
+    if Frame then
+        for _, obj in ipairs(Frame:GetDescendants()) do
+            if obj:IsA("GuiObject") then
+                pcall(function() obj.Visible = visible end)
+            end
+        end
+        pcall(function() Frame.Visible = visible end)
+    end
+    if MinContainer then
+        pcall(function() MinContainer.Visible = not visible end)
+    end
+end
+
+local dragging = false
+local dragInput = nil
+local dragStart = nil
+local startPos = nil
+
+local function updateGuiPosition(pos)
+    if not Frame then return end
+    local screenW = math.max(1, gui.AbsoluteSize.X)
+    local screenH = math.max(1, gui.AbsoluteSize.Y)
+    local w = Frame.AbsoluteSize.X
+    local h = Frame.AbsoluteSize.Y
+    local x = math.clamp(pos.X, 0, screenW - w)
+    local y = math.clamp(pos.Y, 40, screenH - h) -- keep below topbar
+    Frame.Position = UDim2.new(0, x, 0, y)
+    if MinContainer then
+        MinContainer.Position = UDim2.new(0, x + 8, 0, y - 28)
+    end
+end
+
+local function beginDrag(input)
+    dragging = true
+    dragInput = input
+    dragStart = input.Position
+    startPos = Frame.Position
+end
+
+local function onDragChanged(input)
+    if not dragging then return end
+    local delta = input.Position - dragStart
+    local newX = startPos.X.Offset + delta.X
+    local newY = startPos.Y.Offset + delta.Y
+    updateGuiPosition(Vector2.new(newX, newY))
+end
+
+local function endDrag()
+    dragging = false
+    dragInput = nil
+    dragStart = nil
+    startPos = nil
+end
+
 local function CreateGUI()
     if gui then gui:Destroy() end
     gui = Instance.new("ScreenGui")
@@ -141,51 +199,62 @@ local function CreateGUI()
     gui.Parent = localPlayer:WaitForChild("PlayerGui")
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
-    local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(0,280,0,360)
-    Frame.Position = UDim2.new(0,10,0,50)
-    Frame.AnchorPoint = Vector2.new(0,0)
+    Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(0,300,0,420)
+    Frame.Position = UDim2.new(0,10,0,60)
     Frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
     Frame.BorderSizePixel = 0
     Frame.Parent = gui
     Frame.ClipsDescendants = true
-    Frame.ZIndex = 10
+    Frame.ZIndex = 50
 
     local function scaleGui()
         local screenW = math.max(1, gui.AbsoluteSize.X)
         local screenH = math.max(1, gui.AbsoluteSize.Y)
-        local w = math.clamp(screenW * 0.32, 260, 360)
-        local h = math.clamp(screenH * 0.5, 340, 520)
+        local w = math.clamp(screenW * 0.34, 260, 380)
+        local h = math.clamp(screenH * 0.55, 340, 560)
         Frame.Size = UDim2.new(0, w, 0, h)
-        Frame.Position = UDim2.new(0, 10, 0, 50)
+        local fp = Frame.Position
+        if fp.X.Offset < 0 or fp.Y.Offset < 0 then
+            Frame.Position = UDim2.new(0,10,0,60)
+        end
+        if MinContainer then
+            MinContainer.Position = UDim2.new(0, Frame.Position.X.Offset + 8, 0, Frame.Position.Y.Offset - 28)
+        end
     end
     scaleGui()
     gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(scaleGui)
 
-    local MinBtn = Instance.new("TextButton")
-    MinBtn.Size = UDim2.new(0,36,0,22)
-    MinBtn.Position = UDim2.new(0,12,0,22)
-    MinBtn.AnchorPoint = Vector2.new(0,0)
-    MinBtn.BackgroundColor3 = Color3.fromRGB(200,200,0)
-    MinBtn.Text = "-"
-    MinBtn.TextColor3 = Color3.fromRGB(0,0,0)
-    MinBtn.Font = Enum.Font.GothamBold
-    MinBtn.TextScaled = true
-    MinBtn.Parent = gui
-    MinBtn.ZIndex = 1002
-    MinBtn.AutoButtonColor = true
+    MinContainer = Instance.new("Frame")
+    MinContainer.Size = UDim2.new(0,48,0,28)
+    MinContainer.Position = UDim2.new(0, Frame.Position.X.Offset + 8, 0, Frame.Position.Y.Offset - 28)
+    MinContainer.BackgroundTransparency = 1
+    MinContainer.Parent = gui
+    MinContainer.ZIndex = 60
+    MinContainer.Visible = Minimized
 
-    local MinHit = Instance.new("TextButton")
-    MinHit.Size = UDim2.new(0,80,0,44)
-    MinHit.Position = UDim2.new(0,6,0,18)
-    MinHit.BackgroundTransparency = 1
-    MinHit.Text = ""
-    MinHit.Parent = gui
-    MinHit.ZIndex = 1001
-    MinHit.AutoButtonColor = false
+    MinButton = Instance.new("TextButton")
+    MinButton.Size = UDim2.new(1,0,1,0)
+    MinButton.BackgroundColor3 = Color3.fromRGB(200,200,0)
+    MinButton.Text = "-"
+    MinButton.TextColor3 = Color3.fromRGB(0,0,0)
+    MinButton.Font = Enum.Font.GothamBold
+    MinButton.TextScaled = true
+    MinButton.Parent = MinContainer
+    MinButton.ZIndex = 61
+    MinButton.AutoButtonColor = true
+
+    MinTouchHit = Instance.new("TextButton")
+    MinTouchHit.Size = UDim2.new(0,80,0,44)
+    MinTouchHit.Position = UDim2.new(0, Frame.Position.X.Offset - 2, 0, Frame.Position.Y.Offset - 32)
+    MinTouchHit.BackgroundTransparency = 1
+    MinTouchHit.Text = ""
+    MinTouchHit.Parent = gui
+    MinTouchHit.ZIndex = 49
+    MinTouchHit.AutoButtonColor = false
 
     local Title = Instance.new("TextLabel")
-    Title.Size = UDim2.new(1,0,0,30)
+    Title.Size = UDim2.new(1,0,0,34)
     Title.Position = UDim2.new(0,0,0,0)
     Title.BackgroundColor3 = Color3.fromRGB(40,40,40)
     Title.Text = "Takbir's MVS Panel v1.2"
@@ -193,22 +262,21 @@ local function CreateGUI()
     Title.TextScaled = true
     Title.Font = Enum.Font.GothamBold
     Title.Parent = Frame
-    Title.ZIndex = 11
+    Title.ZIndex = 51
 
-    local ScrollFrame = Instance.new("ScrollingFrame")
-    ScrollFrame.Size = UDim2.new(1,0,1,-30)
-    ScrollFrame.Position = UDim2.new(0,0,0,30)
+    ScrollFrame = Instance.new("ScrollingFrame")
+    ScrollFrame.Size = UDim2.new(1,0,1,-34)
+    ScrollFrame.Position = UDim2.new(0,0,0,34)
     ScrollFrame.BackgroundTransparency = 1
-    ScrollFrame.CanvasSize = UDim2.new(0,0,0,800)
+    ScrollFrame.CanvasSize = UDim2.new(0,0,0,900)
     ScrollFrame.ScrollBarThickness = 6
     ScrollFrame.Parent = Frame
-    ScrollFrame.ZIndex = 11
+    ScrollFrame.ZIndex = 51
 
     local function CreateButton(pos,defaultText,color,onClick)
         local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(0,120,0,30)
+        btn.Size = UDim2.new(0,130,0,34)
         btn.Position = pos
-        btn.AnchorPoint = Vector2.new(0,0)
         btn.BackgroundColor3 = color
         btn.Text = defaultText
         btn.TextColor3 = Color3.fromRGB(255,255,255)
@@ -228,8 +296,8 @@ local function CreateGUI()
 
     local function CreateSlider(pos,labelText,default,callback)
         local lbl = Instance.new("TextLabel")
-        lbl.Size = UDim2.new(0,240,0,20)
-        lbl.Position = pos - UDim2.new(0,0,0,20)
+        lbl.Size = UDim2.new(0,260,0,20)
+        lbl.Position = pos - UDim2.new(0,0,0,18)
         lbl.BackgroundTransparency = 1
         lbl.Text = labelText.." "..default
         lbl.TextColor3 = Color3.fromRGB(255,255,255)
@@ -238,7 +306,7 @@ local function CreateGUI()
         lbl.Parent = ScrollFrame
 
         local tb = Instance.new("TextBox")
-        tb.Size = UDim2.new(0,240,0,25)
+        tb.Size = UDim2.new(0,260,0,30)
         tb.Position = pos
         tb.BackgroundColor3 = Color3.fromRGB(80,80,80)
         tb.TextColor3 = Color3.fromRGB(255,255,255)
@@ -263,25 +331,25 @@ local function CreateGUI()
         SpeedEnabled = not SpeedEnabled
         btn.Text = SpeedEnabled and "Speed: ON" or "Speed: OFF"
     end)
-    local ESPBtn = CreateButton(UDim2.new(0,150,0,10),"ESP: ON",Color3.fromRGB(0,0,150),function(btn)
+    local ESPBtn = CreateButton(UDim2.new(0,160,0,10),"ESP: ON",Color3.fromRGB(0,0,150),function(btn)
         ESPEnabled = not ESPEnabled
         btn.Text = ESPEnabled and "ESP: ON" or "ESP: OFF"
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= localPlayer then UpdateHighlight(p) end
         end
     end)
-    local HitboxBtn = CreateButton(UDim2.new(0,10,0,120),"Hitbox: ON",Color3.fromRGB(120,0,120),function(btn)
+    local HitboxBtn = CreateButton(UDim2.new(0,10,0,74),"Hitbox: ON",Color3.fromRGB(120,0,120),function(btn)
         HitboxEnabled = not HitboxEnabled
         btn.Text = HitboxEnabled and "Hitbox: ON" or "Hitbox: OFF"
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= localPlayer then UpdateHitbox(p) end
         end
     end)
-    local ClickTPBtn = CreateButton(UDim2.new(0,150,0,120),"Click TP: OFF",Color3.fromRGB(100,100,100),function(btn)
+    local ClickTPBtn = CreateButton(UDim2.new(0,160,0,74),"Click TP: OFF",Color3.fromRGB(100,100,100),function(btn)
         ClickTeleportEnabled = not ClickTeleportEnabled
         btn.Text = ClickTeleportEnabled and "Click TP: ON" or "Click TP: OFF"
     end)
-    local WallBreakBtn = CreateButton(UDim2.new(0,10,0,230),"Wall Break: OFF",Color3.fromRGB(200,0,50),function(btn)
+    local WallBreakBtn = CreateButton(UDim2.new(0,10,0,138),"Wall Break: OFF",Color3.fromRGB(200,0,50),function(btn)
         WallBreakEnabled = not WallBreakEnabled
         btn.Text = WallBreakEnabled and "Wall Break: ON" or "Wall Break: OFF"
         if WallBreakEnabled then
@@ -291,12 +359,12 @@ local function CreateGUI()
         end
     end)
 
-    CreateSlider(UDim2.new(0,10,0,60),"Speed",BoostSpeed,function(val) BoostSpeed = val end)
-    CreateSlider(UDim2.new(0,10,0,170),"Hitbox Size",HeadSize,function(val) HeadSize = val end)
+    CreateSlider(UDim2.new(0,10,0,42),"Speed",BoostSpeed,function(val) BoostSpeed = val end)
+    CreateSlider(UDim2.new(0,10,0,106),"Hitbox Size",HeadSize,function(val) HeadSize = val end)
 
     local colorLabel = Instance.new("TextLabel")
-    colorLabel.Size = UDim2.new(0,240,0,25)
-    colorLabel.Position = UDim2.new(0,10,0,280)
+    colorLabel.Size = UDim2.new(0,260,0,28)
+    colorLabel.Position = UDim2.new(0,10,0,182)
     colorLabel.BackgroundColor3 = Color3.fromRGB(50,50,50)
     colorLabel.Text = "Highlight Color: Black"
     colorLabel.TextColor3 = Color3.fromRGB(255,255,255)
@@ -305,8 +373,8 @@ local function CreateGUI()
     colorLabel.Parent = ScrollFrame
 
     local dropdown = Instance.new("TextButton")
-    dropdown.Size = UDim2.new(0,240,0,25)
-    dropdown.Position = UDim2.new(0,10,0,310)
+    dropdown.Size = UDim2.new(0,260,0,28)
+    dropdown.Position = UDim2.new(0,10,0,214)
     dropdown.BackgroundColor3 = Color3.fromRGB(70,70,70)
     dropdown.Text = "Select Color"
     dropdown.TextColor3 = Color3.fromRGB(255,255,255)
@@ -315,8 +383,8 @@ local function CreateGUI()
     dropdown.Parent = ScrollFrame
 
     local listFrame = Instance.new("Frame")
-    listFrame.Size = UDim2.new(0,240,0,0)
-    listFrame.Position = UDim2.new(0,0,0,25)
+    listFrame.Size = UDim2.new(0,260,0,0)
+    listFrame.Position = UDim2.new(0,0,0,28)
     listFrame.BackgroundTransparency = 0.5
     listFrame.BackgroundColor3 = Color3.fromRGB(60,60,60)
     listFrame.Parent = dropdown
@@ -325,14 +393,14 @@ local function CreateGUI()
     local open = false
     dropdown.MouseButton1Click:Connect(function()
         open = not open
-        listFrame.Size = open and UDim2.new(0,240,0,125) or UDim2.new(0,240,0,0)
+        listFrame.Size = open and UDim2.new(0,260,0,160) or UDim2.new(0,260,0,0)
     end)
 
     local i = 0
     for name,color in pairs(HighlightColors) do
         local b = Instance.new("TextButton")
-        b.Size = UDim2.new(0,240,0,25)
-        b.Position = UDim2.new(0,0,0,i*25)
+        b.Size = UDim2.new(0,260,0,32)
+        b.Position = UDim2.new(0,0,0,i*32)
         b.BackgroundColor3 = Color3.fromRGB(80,80,80)
         b.Text = name
         b.TextColor3 = Color3.fromRGB(255,255,255)
@@ -349,36 +417,56 @@ local function CreateGUI()
         i = i + 1
     end
 
-    local function toggleFrame()
-        Frame.Visible = not Frame.Visible
+    local function toggleMinimize()
+        Minimized = not Minimized
+        setVisibility(not Minimized)
     end
 
-    MinBtn.MouseButton1Click:Connect(toggleFrame)
-    MinBtn.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch then toggleFrame() end
+    MinButton.MouseButton1Click:Connect(toggleMinimize)
+    MinButton.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then toggleMinimize() end
     end)
-    MinHit.MouseButton1Click:Connect(toggleFrame)
-    MinHit.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch then toggleFrame() end
+    MinTouchHit.MouseButton1Click:Connect(toggleMinimize)
+    MinTouchHit.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then toggleMinimize() end
+    end)
+
+    Title.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            beginDrag(input)
+        end
+    end)
+    Title.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput then
+            onDragChanged(input)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input == dragInput then endDrag() end
     end)
 end
 
-if not gui then
-    CreateGUI()
-end
+CreateGUI()
 
 local function onCharacterAdded(char)
     OriginalCollides = {}
     if WallBreakEnabled then
         enableNoclipForCharacter(char)
     end
-    wait(1)
+    wait(0.8)
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= localPlayer then
             UpdateHighlight(p)
             UpdateHitbox(p)
         end
     end
+    setVisibility(not Minimized)
 end
 
 if localPlayer.Character then
@@ -396,18 +484,35 @@ mouse.Button1Down:Connect(function()
     end
 end)
 
-RunService.RenderStepped:Connect(function()
+RunService.Heartbeat:Connect(function()
+    if Frame then
+        if Minimized then
+            if Frame.Visible then
+                pcall(function() Frame.Visible = false end)
+            end
+            if MinContainer and not MinContainer.Visible then
+                pcall(function() MinContainer.Visible = true end)
+            end
+        else
+            if not Frame.Visible then
+                pcall(function() Frame.Visible = true end)
+            end
+            if MinContainer and MinContainer.Visible then
+                pcall(function() MinContainer.Visible = false end)
+            end
+        end
+    end
     if localPlayer.Character then
         local hum = localPlayer.Character:FindFirstChildOfClass("Humanoid")
         if hum then
             local targetSpeed = SpeedEnabled and BoostSpeed or 16
             hum.WalkSpeed = targetSpeed
         end
-    end
-    if WallBreakEnabled and localPlayer.Character then
-        for _, part in ipairs(localPlayer.Character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                safeSetCanCollide(part, false)
+        if WallBreakEnabled then
+            for _, part in ipairs(localPlayer.Character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    safeSetCanCollide(part, false)
+                end
             end
         end
     end

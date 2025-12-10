@@ -136,6 +136,8 @@ local function CreateGUI()
     gui = Instance.new("ScreenGui")
     gui.Name = "MVS_GUI"
     gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = false
+    gui.DisplayOrder = 9999
     gui.Parent = localPlayer:WaitForChild("PlayerGui")
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
@@ -161,8 +163,8 @@ local function CreateGUI()
     gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(scaleGui)
 
     local MinBtn = Instance.new("TextButton")
-    MinBtn.Size = UDim2.new(0,40,0,25)
-    MinBtn.Position = UDim2.new(0,10,0,20)
+    MinBtn.Size = UDim2.new(0,36,0,22)
+    MinBtn.Position = UDim2.new(0,12,0,22)
     MinBtn.AnchorPoint = Vector2.new(0,0)
     MinBtn.BackgroundColor3 = Color3.fromRGB(200,200,0)
     MinBtn.Text = "-"
@@ -170,7 +172,17 @@ local function CreateGUI()
     MinBtn.Font = Enum.Font.GothamBold
     MinBtn.TextScaled = true
     MinBtn.Parent = gui
-    MinBtn.ZIndex = 12
+    MinBtn.ZIndex = 1002
+    MinBtn.AutoButtonColor = true
+
+    local MinHit = Instance.new("TextButton")
+    MinHit.Size = UDim2.new(0,80,0,44)
+    MinHit.Position = UDim2.new(0,6,0,18)
+    MinHit.BackgroundTransparency = 1
+    MinHit.Text = ""
+    MinHit.Parent = gui
+    MinHit.ZIndex = 1001
+    MinHit.AutoButtonColor = false
 
     local Title = Instance.new("TextLabel")
     Title.Size = UDim2.new(1,0,0,30)
@@ -205,6 +217,11 @@ local function CreateGUI()
         btn.Parent = ScrollFrame
         btn.MouseButton1Click:Connect(function()
             onClick(btn)
+        end)
+        btn.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                onClick(btn)
+            end
         end)
         return btn
     end
@@ -332,8 +349,17 @@ local function CreateGUI()
         i = i + 1
     end
 
-    MinBtn.MouseButton1Click:Connect(function()
+    local function toggleFrame()
         Frame.Visible = not Frame.Visible
+    end
+
+    MinBtn.MouseButton1Click:Connect(toggleFrame)
+    MinBtn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then toggleFrame() end
+    end)
+    MinHit.MouseButton1Click:Connect(toggleFrame)
+    MinHit.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then toggleFrame() end
     end)
 end
 

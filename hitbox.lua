@@ -10,7 +10,6 @@ local HitboxEnabled = true
 local SpeedEnabled = false
 local ClickTeleportEnabled = false
 local WallBreakEnabled = false
-local NoclipEnabled = false
 local HighlightColor = Color3.fromRGB(0,0,0)
 
 local HighlightColors = {
@@ -28,6 +27,61 @@ pcall(function()
         Duration = 5
     })
 end)
+
+local OriginalCollides = {}
+local noclipRunConn = nil
+local charDescAddedConn = nil
+
+local function safeSetCanCollide(part, val)
+    if part and part:IsA("BasePart") then
+        pcall(function() part.CanCollide = val end)
+    end
+end
+
+local function storeOriginal(part)
+    if part and part:IsA("BasePart") and OriginalCollides[part] == nil then
+        OriginalCollides[part] = part.CanCollide
+    end
+end
+
+local function enableNoclipForCharacter(char)
+    if not char then return end
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            storeOriginal(part)
+            safeSetCanCollide(part, false)
+        end
+    end
+    if charDescAddedConn then charDescAddedConn:Disconnect() charDescAddedConn = nil end
+    charDescAddedConn = char.DescendantAdded:Connect(function(desc)
+        if desc:IsA("BasePart") then
+            storeOriginal(desc)
+            safeSetCanCollide(desc, false)
+        end
+    end)
+    if noclipRunConn then noclipRunConn:Disconnect() noclipRunConn = nil end
+    noclipRunConn = RunService.Stepped:Connect(function()
+        if WallBreakEnabled and localPlayer.Character then
+            for _, part in ipairs(localPlayer.Character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    safeSetCanCollide(part, false)
+                end
+            end
+        end
+    end)
+end
+
+local function disableNoclipForCharacter()
+    if noclipRunConn then noclipRunConn:Disconnect() noclipRunConn = nil end
+    if charDescAddedConn then charDescAddedConn:Disconnect() charDescAddedConn = nil end
+    for part, orig in pairs(OriginalCollides) do
+        if part and part.Parent then
+            safeSetCanCollide(part, orig)
+        end
+        OriginalCollides[part] = nil
+    end
+    OriginalCollides = {}
+end
 
 local function UpdateHighlight(player)
     local char = player.Character
@@ -70,50 +124,72 @@ local function UpdateHitbox(player)
         else
             if box then box:Destroy() end
             hrp.Size = DefaultHRPSize
-            hrp.CanCollide = not WallBreakEnabled
+            hrp.CanCollide = false
             hrp.Transparency = 1
         end
     end
 end
 
-local function UpdateWallBreak()
-    if localPlayer.Character then
-        for _, part in ipairs(localPlayer.Character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = not WallBreakEnabled
-            end
-        end
-    end
-end
-
 local gui
+local isMinimizing = false -- <-- NEW: Debounce flag for the minimize button
+
 local function CreateGUI()
     if gui then gui:Destroy() end
     gui = Instance.new("ScreenGui")
     gui.Name = "MVS_GUI"
     gui.ResetOnSpawn = false
     gui.Parent = localPlayer:WaitForChild("PlayerGui")
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
     local Frame = Instance.new("Frame")
     Frame.Size = UDim2.new(0,280,0,360)
-    Frame.Position = UDim2.new(0,10,0,80)
+    Frame.Position = UDim2.new(0,10,0,50)
+    Frame.AnchorPoint = Vector2.new(0,0)
     Frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
     Frame.BorderSizePixel = 0
     Frame.Parent = gui
     Frame.ClipsDescendants = true
-    Frame.Active = true
-    Frame.Draggable = true
+    Frame.ZIndex = 10
+
+    local function scaleGui()
+        local screenW = math.max(1, gui.AbsoluteSize.X)
+        local screenH = math.max(1, gui.AbsoluteSize.Y)
+        local w = math.clamp(screenW * 0.32, 260, 360)
+        local h = math.clamp(screenH * 0.5, 340, 520)
+        Frame.Size = UDim2.new(0, w, 0, h)
+        Frame.Position = UDim2.new(0, 10, 0, 50)
+    end
+    scaleGui()
+    gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(scaleGui)
 
     local MinBtn = Instance.new("TextButton")
-    MinBtn.Size = UDim2.new(0,30,0,25)
-    MinBtn.Position = UDim2.new(0,Frame.AbsoluteSize.X-35,0,5)
+    MinBtn.Size = UDim2.new(0,40,0,25)
+    MinBtn.Position = UDim2.new(0,10,0,20)
+    MinBtn.AnchorPoint = Vector2.new(0,0)
     MinBtn.BackgroundColor3 = Color3.fromRGB(200,200,0)
     MinBtn.Text = "-"
     MinBtn.TextColor3 = Color3.fromRGB(0,0,0)
     MinBtn.Font = Enum.Font.GothamBold
     MinBtn.TextScaled = true
-    MinBtn.ZIndex = 10
-    MinBtn.Parent = Frame
+    MinBtn.Parent = gui
+    MinBtn.ZIndex = 12
+    
+    -- *** FIX START ***
+    MinBtn.MouseButton1Click:Connect(function()
+        if isMinimizing then 
+            return -- Ignore if already processing a click
+        end
+        
+        isMinimizing = true -- Set debounce
+        
+        Frame.Visible = not Frame.Visible
+        
+        -- Introduce a small wait to handle rapid mobile touch/click events
+        task.wait(0.2) 
+        
+        isMinimizing = false -- Release debounce
+    end)
+    -- *** FIX END ***
 
     local Title = Instance.new("TextLabel")
     Title.Size = UDim2.new(1,0,0,30)
@@ -124,19 +200,22 @@ local function CreateGUI()
     Title.TextScaled = true
     Title.Font = Enum.Font.GothamBold
     Title.Parent = Frame
+    Title.ZIndex = 11
 
     local ScrollFrame = Instance.new("ScrollingFrame")
     ScrollFrame.Size = UDim2.new(1,0,1,-30)
     ScrollFrame.Position = UDim2.new(0,0,0,30)
     ScrollFrame.BackgroundTransparency = 1
-    ScrollFrame.CanvasSize = UDim2.new(0,0,0,700)
-    ScrollFrame.ScrollBarThickness = 5
+    ScrollFrame.CanvasSize = UDim2.new(0,0,0,800)
+    ScrollFrame.ScrollBarThickness = 6
     ScrollFrame.Parent = Frame
+    ScrollFrame.ZIndex = 11
 
     local function CreateButton(pos,defaultText,color,onClick)
         local btn = Instance.new("TextButton")
         btn.Size = UDim2.new(0,120,0,30)
         btn.Position = pos
+        btn.AnchorPoint = Vector2.new(0,0)
         btn.BackgroundColor3 = color
         btn.Text = defaultText
         btn.TextColor3 = Color3.fromRGB(255,255,255)
@@ -189,10 +268,16 @@ local function CreateGUI()
     local ESPBtn = CreateButton(UDim2.new(0,150,0,10),"ESP: ON",Color3.fromRGB(0,0,150),function(btn)
         ESPEnabled = not ESPEnabled
         btn.Text = ESPEnabled and "ESP: ON" or "ESP: OFF"
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= localPlayer then UpdateHighlight(p) end
+        end
     end)
     local HitboxBtn = CreateButton(UDim2.new(0,10,0,120),"Hitbox: ON",Color3.fromRGB(120,0,120),function(btn)
         HitboxEnabled = not HitboxEnabled
         btn.Text = HitboxEnabled and "Hitbox: ON" or "Hitbox: OFF"
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= localPlayer then UpdateHitbox(p) end
+        end
     end)
     local ClickTPBtn = CreateButton(UDim2.new(0,150,0,120),"Click TP: OFF",Color3.fromRGB(100,100,100),function(btn)
         ClickTeleportEnabled = not ClickTeleportEnabled
@@ -201,11 +286,11 @@ local function CreateGUI()
     local WallBreakBtn = CreateButton(UDim2.new(0,10,0,230),"Wall Break: OFF",Color3.fromRGB(200,0,50),function(btn)
         WallBreakEnabled = not WallBreakEnabled
         btn.Text = WallBreakEnabled and "Wall Break: ON" or "Wall Break: OFF"
-        UpdateWallBreak()
-    end)
-    local NoclipBtn = CreateButton(UDim2.new(0,150,0,230),"Noclip: OFF",Color3.fromRGB(100,50,200),function(btn)
-        NoclipEnabled = not NoclipEnabled
-        btn.Text = NoclipEnabled and "Noclip: ON" or "Noclip: OFF"
+        if WallBreakEnabled then
+            enableNoclipForCharacter(localPlayer.Character)
+        else
+            disableNoclipForCharacter()
+        end
     end)
 
     CreateSlider(UDim2.new(0,10,0,60),"Speed",BoostSpeed,function(val) BoostSpeed = val end)
@@ -259,31 +344,43 @@ local function CreateGUI()
         b.MouseButton1Click:Connect(function()
             HighlightColor = color
             colorLabel.Text = "Highlight Color: "..name
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= localPlayer then UpdateHighlight(p) end
+            end
         end)
         i = i + 1
     end
-
-    MinBtn.MouseButton1Click:Connect(function()
-        Frame.Visible = not Frame.Visible
-    end)
 end
 
 if not gui then
     CreateGUI()
 end
 
-localPlayer.CharacterAdded:Connect(function()
+local function onCharacterAdded(char)
+    OriginalCollides = {}
+    if WallBreakEnabled then
+        enableNoclipForCharacter(char)
+    end
     wait(1)
-    CreateGUI()
-end)
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= localPlayer then
+            UpdateHighlight(p)
+            UpdateHitbox(p)
+        end
+    end
+end
+
+if localPlayer.Character then
+    onCharacterAdded(localPlayer.Character)
+end
+localPlayer.CharacterAdded:Connect(onCharacterAdded)
 
 local mouse = localPlayer:GetMouse()
 mouse.Button1Down:Connect(function()
     if ClickTeleportEnabled and localPlayer.Character then
         local hrp = localPlayer.Character:FindFirstChild("HumanoidRootPart")
         if hrp then
-            local target = mouse.Hit.Position + Vector3.new(0,3,0)
-            hrp.CFrame = CFrame.new(target)
+            hrp.CFrame = CFrame.new(mouse.Hit.Position + Vector3.new(0,3,0))
         end
     end
 end)
@@ -292,21 +389,21 @@ RunService.RenderStepped:Connect(function()
     if localPlayer.Character then
         local hum = localPlayer.Character:FindFirstChildOfClass("Humanoid")
         if hum then
-            hum.WalkSpeed = SpeedEnabled and BoostSpeed or 16
+            local targetSpeed = SpeedEnabled and BoostSpeed or 16
+            hum.WalkSpeed = targetSpeed
         end
-        if NoclipEnabled and localPlayer.Character then
-            for _, part in ipairs(localPlayer.Character:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = false
-                end
+    end
+    if WallBreakEnabled and localPlayer.Character then
+        for _, part in ipairs(localPlayer.Character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                safeSetCanCollide(part, false)
             end
         end
-        UpdateWallBreak()
-        for _,player in ipairs(Players:GetPlayers()) do
-            if player ~= localPlayer then
-                UpdateHighlight(player)
-                UpdateHitbox(player)
-            end
+    end
+    for _,player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer then
+            UpdateHighlight(player)
+            UpdateHitbox(player)
         end
     end
 end)

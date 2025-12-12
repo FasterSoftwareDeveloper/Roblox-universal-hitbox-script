@@ -23,16 +23,16 @@ local AimbotEnabled = false
 local ShowFOVCircle = true
 
 -- Aimbot Settings
-local AimbotFOV = 80 -- Reduced for better accuracy
+local AimbotFOV = 80
 local AimbotTargetPart = "Head"
 local AimbotUsePrediction = true
 local AimbotPredictionAmount = 0.15
-local AimbotSmoothness = 0.4 -- Increased for smoother aim
-local MaxTargetDistance = 300 -- Maximum distance to target (studs)
-local AimbotMode = "Closest to Crosshair" -- Options: "Closest to Crosshair", "Closest Player"
+local AimbotSmoothness = 0.4
+local MaxTargetDistance = 300
+local AimbotMode = "Closest to Crosshair"
 
 -- Visuals
-local HighlightColor = Color3.fromRGB(0,0,0)
+local HighlightColor = Color3.fromRGB(0,0,0) -- Default to Black
 local HighlightColors = {
     Black = Color3.fromRGB(0,0,0),
     Pink = Color3.fromRGB(255,105,180),
@@ -58,7 +58,7 @@ local function Notify(title, text, duration)
     end)
 end
 
-Notify("Takbir's Script V7.3", "Fixed Aimbot - Distance Limit Added!", 5)
+Notify("Takbir's Script V8.0", "Beta", 5)
 
 -- Physics / WallBreak Variables
 local OriginalCollides = {}
@@ -181,7 +181,7 @@ local function UpdateFOVCircle()
     end
 end
 
--- [[ IMPROVED AIMBOT LOGIC WITH DISTANCE LIMIT ]] --
+-- [[ IMPROVED AIMBOT LOGIC ]] --
 local function GetTargetPlayer()
     local closestPlayer = nil
     local closestScore = math.huge
@@ -194,17 +194,13 @@ local function GetTargetPlayer()
             local humanoid = character:FindFirstChildOfClass("Humanoid")
             local targetPart = character:FindFirstChild(AimbotTargetPart) or character:FindFirstChild("HumanoidRootPart")
             
-            -- Check if player is alive and has required parts
             if humanoid and humanoid.Health > 0 and targetPart then
-                -- Calculate distance to player
                 local distance = (cameraPos - targetPart.Position).Magnitude
                 
-                -- Skip if player is too far
                 if distance > MaxTargetDistance then
                     continue
                 end
                 
-                -- Check if player is visible on screen
                 local screenPoint, onScreen = camera:WorldToViewportPoint(targetPart.Position)
                 
                 if onScreen then
@@ -212,15 +208,13 @@ local function GetTargetPlayer()
                     local targetPos = Vector2.new(screenPoint.X, screenPoint.Y)
                     local screenDistance = (mousePos - targetPos).Magnitude
                     
-                    -- Calculate score based on selected mode
                     local score
                     if AimbotMode == "Closest to Crosshair" then
-                        score = screenDistance -- Prioritize closest to crosshair
-                    else -- "Closest Player"
-                        score = distance -- Prioritize closest player by distance
+                        score = screenDistance
+                    else
+                        score = distance
                     end
                     
-                    -- Only consider players within FOV
                     if screenDistance <= AimbotFOV then
                         if score < closestScore then
                             closestScore = score
@@ -246,33 +240,21 @@ local function GetAimbotTarget()
         if targetPart then
             local predictedPosition = targetPart.Position
             
-            -- IMPROVED PREDICTION SYSTEM
             if AimbotUsePrediction and targetPart:IsA("BasePart") then
-                -- Get target's velocity
                 local velocity = targetPart.Velocity
-                
-                -- Get humanoid movement for better prediction
                 local humanoid = character:FindFirstChildOfClass("Humanoid")
                 local moveDirection = Vector3.new(0, 0, 0)
                 
                 if humanoid then
                     moveDirection = humanoid.MoveDirection
-                    
-                    -- Combine velocity and move direction for better prediction
                     if moveDirection.Magnitude > 0 then
-                        -- When humanoid is moving, use move direction more
                         velocity = velocity + (moveDirection * 10)
                     end
                 end
                 
-                -- Calculate time to target based on distance
                 local camera = Workspace.CurrentCamera
                 local distance = (camera.CFrame.Position - targetPart.Position).Magnitude
-                
-                -- Dynamic prediction time based on distance
                 local predictionTime = AimbotPredictionAmount * (distance / 100)
-                
-                -- Apply prediction
                 predictedPosition = targetPart.Position + (velocity * predictionTime)
             end
             
@@ -318,16 +300,19 @@ local function disableNoclipForCharacter()
     OriginalCollides = {}
 end
 
--- [[ VISUALS LOGIC ]] --
+-- [[ SIMPLE ESP/HITBOX SYSTEM - NO CACHE ISSUES ]] --
 local function UpdateHighlight(player)
     local char = player.Character
     if not char then return end
+    
     local existing = char:FindFirstChild("OutlineESP")
+    
     if ESPEnabled then
         local useColor = HighlightColor
         if TeamCheckEnabled then
             useColor = player.TeamColor and player.TeamColor.Color or Color3.fromRGB(255, 255, 255)
         end
+
         if not existing then
             local h = Instance.new("Highlight")
             h.Name = "OutlineESP"
@@ -352,7 +337,9 @@ local function UpdateNameTag(player)
     if not char then return end
     local head = char:FindFirstChild("Head")
     if not head then return end
+
     local existingBillboard = head:FindFirstChild("NameTagESP")
+    
     if NameTagEnabled then
         if not existingBillboard then
             local billboard = Instance.new("BillboardGui")
@@ -361,6 +348,7 @@ local function UpdateNameTag(player)
             billboard.ExtentsOffset = Vector3.new(0, 2, 0)
             billboard.Size = UDim2.new(0, 150, 0, 25)
             billboard.Adornee = head
+
             local label = Instance.new("TextLabel")
             label.Size = UDim2.new(1, 0, 1, 0)
             label.BackgroundTransparency = 1
@@ -383,17 +371,24 @@ local function UpdateHitbox(player)
     if char and char:FindFirstChild("HumanoidRootPart") then
         local hrp = char.HumanoidRootPart
         local box = hrp:FindFirstChild("HitboxOutline")
+        
         if HitboxEnabled then
             if not box then
                 box = Instance.new("SelectionBox")
                 box.Name = "HitboxOutline"
                 box.Adornee = hrp
                 box.Parent = hrp
+                box.LineThickness = 0.1
+                box.Color3 = Color3.fromRGB(0,120,255)
+                box.Transparency = 0
+                box.SurfaceTransparency = 1
+            else
+                box.LineThickness = 0.1
+                box.Color3 = Color3.fromRGB(0,120,255)
+                box.Transparency = 0
+                box.SurfaceTransparency = 1
             end
-            box.LineThickness = 0.1
-            box.Color3 = Color3.fromRGB(0,120,255)
-            box.Transparency = 0
-            box.SurfaceTransparency = 1
+            
             local tool = localPlayer.Character and localPlayer.Character:FindFirstChildWhichIsA("Tool")
             hrp.Size = tool and Vector3.new(HeadSize,HeadSize,HeadSize) or DefaultHRPSize
             hrp.CanCollide = false
@@ -447,33 +442,34 @@ end
 local function CreateGUI()
     if gui then gui:Destroy() end
     gui = Instance.new("ScreenGui")
-    gui.Name = "MVS_GUI_V7"
+    gui.Name = "MVS_GUI_V5"
     gui.ResetOnSpawn = false
     gui.Parent = localPlayer:WaitForChild("PlayerGui")
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
     local MainContainer = Instance.new("Frame")
     MainContainer.Name = "MainContainer"
-    MainContainer.Size = UDim2.new(0, 320, 0, 650) -- Increased height
+    MainContainer.Size = UDim2.new(0, 350, 0, 650)
     MainContainer.Position = UDim2.new(0, 10, 0, 50)
     MainContainer.BackgroundTransparency = 1
     MainContainer.Parent = gui
 
     local MinBtn = Instance.new("TextButton")
     MinBtn.Name = "MinimizeButton"
-    MinBtn.Size = UDim2.new(0, 40, 0, 25)
+    MinBtn.Size = UDim2.new(0, 40, 0, 30)
     MinBtn.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
     MinBtn.Text = "-"
     MinBtn.Font = Enum.Font.GothamBold
     MinBtn.TextScaled = true
+    MinBtn.TextSize = 18
     MinBtn.Parent = MainContainer
     MinBtn.ZIndex = 12
     addCorner(MinBtn, 6)
 
     local MainFrame = Instance.new("Frame")
     MainFrame.Name = "MainFrame"
-    MainFrame.Size = UDim2.new(0, 280, 0, 610) -- Increased height
-    MainFrame.Position = UDim2.new(0, 0, 0, 30)
+    MainFrame.Size = UDim2.new(0, 310, 0, 610)
+    MainFrame.Position = UDim2.new(0, 0, 0, 35)
     MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     MainFrame.Parent = MainContainer
     MainFrame.ClipsDescendants = true
@@ -492,12 +488,12 @@ local function CreateGUI()
     end)
 
     local Title = Instance.new("TextLabel")
-    Title.Size = UDim2.new(1, 0, 0, 35)
+    Title.Size = UDim2.new(1, 0, 0, 40)
     Title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    Title.Text = "  Takbir's Panel v5.0 (Aimbot)"
+    Title.Text = "  Takbir's Panel v5.0"
     Title.TextColor3 = Color3.fromRGB(255, 255, 255)
     Title.TextXAlignment = Enum.TextXAlignment.Left
-    Title.TextSize = 18
+    Title.TextSize = 20
     Title.Font = Enum.Font.GothamBold
     Title.Parent = MainFrame
     Title.InputBegan:Connect(function(input) startDrag(input, MainContainer) end)
@@ -506,26 +502,42 @@ local function CreateGUI()
         isMinimizing = not isMinimizing
         MainFrame.Visible = not isMinimizing
         MinBtn.Text = isMinimizing and "+" or "-"
-        MainContainer.Size = isMinimizing and UDim2.new(0, 40, 0, 25) or UDim2.new(0, 320, 0, 650)
+        MainContainer.Size = isMinimizing and UDim2.new(0, 40, 0, 30) or UDim2.new(0, 350, 0, 650)
     end)
 
+    -- SCROLLINGFRAME WITH LARGE CANVAS FOR UNLIMITED SCROLL
     local ScrollFrame = Instance.new("ScrollingFrame")
-    ScrollFrame.Size = UDim2.new(1, -10, 1, -45)
-    ScrollFrame.Position = UDim2.new(0, 5, 0, 40)
+    ScrollFrame.Size = UDim2.new(1, -10, 1, -50)
+    ScrollFrame.Position = UDim2.new(0, 5, 0, 45)
     ScrollFrame.BackgroundTransparency = 1
-    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 1150) -- Increased canvas size
-    ScrollFrame.ScrollBarThickness = 4
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 1500) -- Increased for more content
+    ScrollFrame.ScrollBarThickness = 8
+    ScrollFrame.ScrollingEnabled = true
+    ScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.Always
     ScrollFrame.Parent = MainFrame
+
+    -- [[ AIMBOT INFO TEXT - AT THE VERY TOP ]] --
+    local AimbotInfo = Instance.new("TextLabel")
+    AimbotInfo.Size = UDim2.new(0, 290, 0, 40)
+    AimbotInfo.Position = UDim2.new(0, 5, 0, 5)
+    AimbotInfo.BackgroundColor3 = Color3.fromRGB(30, 30, 50)
+    AimbotInfo.Text = "ℹ️ AIMBOT INFO: Works only with mouse on PC/Laptop"
+    AimbotInfo.TextColor3 = Color3.fromRGB(0, 255, 255)
+    AimbotInfo.Font = Enum.Font.GothamBold
+    AimbotInfo.TextSize = 14
+    AimbotInfo.TextWrapped = true
+    AimbotInfo.Parent = ScrollFrame
+    addCorner(AimbotInfo, 6)
 
     local function CreateButton(pos, text, color, onClick)
         local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(0, 125, 0, 35)
+        btn.Size = UDim2.new(0, 145, 0, 40)
         btn.Position = pos
         btn.BackgroundColor3 = color
         btn.Text = text
         btn.TextColor3 = Color3.fromRGB(255, 255, 255)
         btn.Font = Enum.Font.GothamBold
-        btn.TextSize = 14
+        btn.TextSize = 16
         btn.Parent = ScrollFrame
         addCorner(btn, 6)
         btn.MouseButton1Click:Connect(function() onClick(btn) end)
@@ -534,25 +546,29 @@ local function CreateGUI()
 
     local function CreateSlider(pos, labelText, default, callback)
         local frame = Instance.new("Frame")
-        frame.Size = UDim2.new(0, 260, 0, 50)
+        frame.Size = UDim2.new(0, 290, 0, 60)
         frame.Position = pos
         frame.BackgroundTransparency = 1
         frame.Parent = ScrollFrame
+        
         local lbl = Instance.new("TextLabel")
-        lbl.Size = UDim2.new(1, 0, 0, 20)
+        lbl.Size = UDim2.new(1, 0, 0, 25)
         lbl.BackgroundTransparency = 1
         lbl.Text = labelText .. ": " .. default
         lbl.TextColor3 = Color3.fromRGB(200, 200, 200)
         lbl.Font = Enum.Font.Gotham
+        lbl.TextSize = 15
         lbl.TextXAlignment = Enum.TextXAlignment.Left
         lbl.Parent = frame
+        
         local tb = Instance.new("TextBox")
-        tb.Size = UDim2.new(1, 0, 0, 25)
-        tb.Position = UDim2.new(0, 0, 0, 22)
+        tb.Size = UDim2.new(1, 0, 0, 30)
+        tb.Position = UDim2.new(0, 0, 0, 27)
         tb.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
         tb.TextColor3 = Color3.fromRGB(255, 255, 255)
         tb.Text = tostring(default)
         tb.Font = Enum.Font.Gotham
+        tb.TextSize = 14
         tb.Parent = frame
         addCorner(tb, 6)
         tb.FocusLost:Connect(function()
@@ -565,11 +581,12 @@ local function CreateGUI()
                 tb.Text = tostring(default) 
             end
         end)
+        return frame
     end
 
     local function CreateToggle(pos, text, default, onClick)
         local frame = Instance.new("Frame")
-        frame.Size = UDim2.new(0, 260, 0, 40)
+        frame.Size = UDim2.new(0, 290, 0, 45)
         frame.Position = pos
         frame.BackgroundTransparency = 1
         frame.Parent = ScrollFrame
@@ -580,6 +597,7 @@ local function CreateGUI()
         lbl.Text = text
         lbl.TextColor3 = Color3.fromRGB(200, 200, 200)
         lbl.Font = Enum.Font.Gotham
+        lbl.TextSize = 15
         lbl.TextXAlignment = Enum.TextXAlignment.Left
         lbl.Parent = frame
         
@@ -590,7 +608,7 @@ local function CreateGUI()
         btn.Text = default and "ON" or "OFF"
         btn.TextColor3 = Color3.fromRGB(255, 255, 255)
         btn.Font = Enum.Font.GothamBold
-        btn.TextSize = 14
+        btn.TextSize = 15
         btn.Parent = frame
         addCorner(btn, 6)
         
@@ -600,55 +618,55 @@ local function CreateGUI()
             btn.BackgroundColor3 = newState and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(180, 50, 50)
             onClick(newState)
         end)
-        
         return btn
     end
 
-    -- [[ BUTTONS ]] --
-    CreateButton(UDim2.new(0, 5, 0, 5), "Speed: OFF", Color3.fromRGB(180, 50, 50), function(b)
+    -- [[ MAIN BUTTONS - POSITIONS ADJUSTED FOR AIMBOT INFO ]] --
+    CreateButton(UDim2.new(0, 5, 0, 50), "Speed: OFF", Color3.fromRGB(180, 50, 50), function(b)
         SpeedEnabled = not SpeedEnabled
         b.Text = SpeedEnabled and "Speed: ON" or "Speed: OFF"
         b.BackgroundColor3 = SpeedEnabled and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(180, 50, 50)
     end)
-    CreateButton(UDim2.new(0, 140, 0, 5), "ESP: ON", Color3.fromRGB(50, 180, 50), function(b)
+    
+    CreateButton(UDim2.new(0, 155, 0, 50), "ESP: ON", Color3.fromRGB(50, 180, 50), function(b)
         ESPEnabled = not ESPEnabled
         b.Text = ESPEnabled and "ESP: ON" or "ESP: OFF"
         b.BackgroundColor3 = ESPEnabled and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(180, 50, 50)
         for _, p in ipairs(Players:GetPlayers()) do if p ~= localPlayer then UpdateHighlight(p) end end
     end)
 
-    CreateButton(UDim2.new(0, 5, 0, 45), "Hitbox: ON", Color3.fromRGB(50, 180, 50), function(b)
+    CreateButton(UDim2.new(0, 5, 0, 95), "Hitbox: ON", Color3.fromRGB(50, 180, 50), function(b)
         HitboxEnabled = not HitboxEnabled
         b.Text = HitboxEnabled and "Hitbox: ON" or "Hitbox: OFF"
         b.BackgroundColor3 = HitboxEnabled and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(180, 50, 50)
         for _, p in ipairs(Players:GetPlayers()) do if p ~= localPlayer then UpdateHitbox(p) end end
     end)
-    CreateButton(UDim2.new(0, 140, 0, 45), "Click TP: OFF", Color3.fromRGB(100, 100, 100), function(b)
+    CreateButton(UDim2.new(0, 155, 0, 95), "Click TP: OFF", Color3.fromRGB(100, 100, 100), function(b)
         ClickTeleportEnabled = not ClickTeleportEnabled
         b.Text = ClickTeleportEnabled and "Click TP: ON" or "Click TP: OFF"
         b.BackgroundColor3 = ClickTeleportEnabled and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(100, 100, 100)
     end)
 
-    CreateButton(UDim2.new(0, 5, 0, 85), "WallBreak: OFF", Color3.fromRGB(180, 50, 50), function(b)
+    CreateButton(UDim2.new(0, 5, 0, 140), "WallBreak: OFF", Color3.fromRGB(180, 50, 50), function(b)
         WallBreakEnabled = not WallBreakEnabled
         b.Text = WallBreakEnabled and "WallBreak: ON" or "WallBreak: OFF"
         b.BackgroundColor3 = WallBreakEnabled and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(180, 50, 50)
         if WallBreakEnabled then enableNoclipForCharacter(localPlayer.Character) else disableNoclipForCharacter() end
     end)
-    CreateButton(UDim2.new(0, 140, 0, 85), "Team Check: OFF", Color3.fromRGB(100, 100, 100), function(b)
+    CreateButton(UDim2.new(0, 155, 0, 140), "Team Check: OFF", Color3.fromRGB(100, 100, 100), function(b)
         TeamCheckEnabled = not TeamCheckEnabled
         b.Text = TeamCheckEnabled and "Team Check: ON" or "Team Check: OFF"
         b.BackgroundColor3 = TeamCheckEnabled and Color3.fromRGB(0, 150, 255) or Color3.fromRGB(100, 100, 100)
         for _, p in ipairs(Players:GetPlayers()) do if p ~= localPlayer then UpdateHighlight(p) end end
     end)
 
-    CreateButton(UDim2.new(0, 5, 0, 125), "Name Tag: OFF", Color3.fromRGB(100, 100, 100), function(b)
+    CreateButton(UDim2.new(0, 5, 0, 185), "Name Tag: OFF", Color3.fromRGB(100, 100, 100), function(b)
         NameTagEnabled = not NameTagEnabled
         b.Text = NameTagEnabled and "Name Tag: ON" or "Name Tag: OFF"
         b.BackgroundColor3 = NameTagEnabled and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(100, 100, 100)
         for _, p in ipairs(Players:GetPlayers()) do if p ~= localPlayer then UpdateNameTag(p) end end
     end)
-    CreateButton(UDim2.new(0, 140, 0, 125), "FlyJump: OFF", Color3.fromRGB(180, 50, 50), function(b)
+    CreateButton(UDim2.new(0, 155, 0, 185), "FlyJump: OFF", Color3.fromRGB(180, 50, 50), function(b)
         FlyJumpEnabled = not FlyJumpEnabled
         b.Text = FlyJumpEnabled and "FlyJump: ON" or "FlyJump: OFF"
         b.BackgroundColor3 = FlyJumpEnabled and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(180, 50, 50)
@@ -656,191 +674,211 @@ local function CreateGUI()
     end)
 
     -- AIMBOT BUTTON
-    CreateButton(UDim2.new(0, 5, 0, 165), "Aimbot: OFF", Color3.fromRGB(180, 50, 50), function(b)
+    CreateButton(UDim2.new(0, 5, 0, 230), "Aimbot: OFF", Color3.fromRGB(180, 50, 50), function(b)
         AimbotEnabled = not AimbotEnabled
         b.Text = AimbotEnabled and "Aimbot: ON" or "Aimbot: OFF"
         b.BackgroundColor3 = AimbotEnabled and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(180, 50, 50)
         UpdateFOVCircle()
-        Notify("Aimbot", AimbotEnabled and "Enabled - Max Distance: " .. MaxTargetDistance .. " studs" or "Disabled")
+        Notify("Aimbot", AimbotEnabled and "Enabled" or "Disabled")
     end)
-    local RespawnBtn = CreateButton(UDim2.new(0, 140, 0, 165), "Respawn Character", Color3.fromRGB(200, 30, 30), function(b)
+    CreateButton(UDim2.new(0, 155, 0, 230), "Respawn Character", Color3.fromRGB(200, 30, 30), function(b)
         InstantRespawn()
+    end)
+
+    -- [[ SPECTATE SECTION ]] --
+    local SpectateLabel = Instance.new("TextLabel")
+    SpectateLabel.Size = UDim2.new(0, 290, 0, 25)
+    SpectateLabel.Position = UDim2.new(0, 5, 0, 285)
+    SpectateLabel.BackgroundTransparency = 1
+    SpectateLabel.Text = "SPECTATE PLAYER"
+    SpectateLabel.TextColor3 = Color3.fromRGB(255, 105, 180)
+    SpectateLabel.Font = Enum.Font.GothamBold
+    SpectateLabel.TextSize = 18
+    SpectateLabel.Parent = ScrollFrame
+
+    local SpectateTextBox = Instance.new("TextBox")
+    SpectateTextBox.Size = UDim2.new(0, 140, 0, 35)
+    SpectateTextBox.Position = UDim2.new(0, 5, 0, 315)
+    SpectateTextBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    SpectateTextBox.Text = "Type Player Name"
+    SpectateTextBox.PlaceholderText = "Type Player Name"
+    SpectateTextBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    SpectateTextBox.Font = Enum.Font.Gotham
+    SpectateTextBox.TextSize = 14
+    SpectateTextBox.Parent = ScrollFrame
+    addCorner(SpectateTextBox, 6)
+
+    CreateButton(UDim2.new(0, 150, 0, 315), "Spectate", Color3.fromRGB(0, 150, 255), function(b)
+        local targetName = SpectateTextBox.Text
+        local targetPlayer = findPartialPlayer(targetName)
+        if targetPlayer then
+            SpectatePlayer(targetPlayer)
+        else
+            Notify("Error", "Player not found!")
+        end
+    end)
+
+    CreateButton(UDim2.new(0, 5, 0, 355), "Stop Spectate", Color3.fromRGB(200, 50, 50), function(b)
+        StopSpectate()
     end)
 
     -- [[ AIMBOT SETTINGS SECTION ]] --
     local AimbotLabel = Instance.new("TextLabel")
-    AimbotLabel.Size = UDim2.new(0, 260, 0, 20)
-    AimbotLabel.Position = UDim2.new(0, 5, 0, 210)
+    AimbotLabel.Size = UDim2.new(0, 290, 0, 25)
+    AimbotLabel.Position = UDim2.new(0, 5, 0, 405)
     AimbotLabel.BackgroundTransparency = 1
-    AimbotLabel.Text = "Aimbot Settings"
+    AimbotLabel.Text = "AIMBOT SETTINGS"
     AimbotLabel.TextColor3 = Color3.fromRGB(255, 105, 180)
     AimbotLabel.Font = Enum.Font.GothamBold
-    AimbotLabel.TextSize = 14
+    AimbotLabel.TextSize = 18
     AimbotLabel.Parent = ScrollFrame
 
-    CreateSlider(UDim2.new(0, 5, 0, 235), "FOV Radius", AimbotFOV, function(val) 
+    CreateSlider(UDim2.new(0, 5, 0, 435), "FOV Radius", AimbotFOV, function(val) 
         AimbotFOV = val 
         UpdateFOVCircle()
-        Notify("Aimbot", "FOV set to: " .. val)
     end)
 
     -- FOV Circle Toggle
-    CreateToggle(UDim2.new(0, 5, 0, 295), "Show FOV Circle", ShowFOVCircle, function(state)
+    CreateToggle(UDim2.new(0, 5, 0, 505), "Show FOV Circle", ShowFOVCircle, function(state)
         ShowFOVCircle = state
         UpdateFOVCircle()
-        Notify("Aimbot", "FOV Circle: " .. (state and "ON" or "OFF"))
     end)
 
     -- Aimbot Mode Selection
     local modeLabel = Instance.new("TextLabel")
-    modeLabel.Size = UDim2.new(0, 260, 0, 20)
-    modeLabel.Position = UDim2.new(0, 5, 0, 340)
+    modeLabel.Size = UDim2.new(0, 290, 0, 25)
+    modeLabel.Position = UDim2.new(0, 5, 0, 560)
     modeLabel.BackgroundTransparency = 1
     modeLabel.Text = "Mode: " .. AimbotMode
     modeLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     modeLabel.Font = Enum.Font.Gotham
+    modeLabel.TextSize = 16
     modeLabel.Parent = ScrollFrame
 
-    local modeBtn = CreateButton(UDim2.new(0, 5, 0, 365), "Crosshair", Color3.fromRGB(60, 60, 60), function(b)
+    CreateButton(UDim2.new(0, 5, 0, 590), "Crosshair Mode", Color3.fromRGB(60, 60, 60), function(b)
         if AimbotMode == "Closest to Crosshair" then
             AimbotMode = "Closest Player"
-            b.Text = "Closest"
+            b.Text = "Closest Player"
         else
             AimbotMode = "Closest to Crosshair"
-            b.Text = "Crosshair"
+            b.Text = "Crosshair Mode"
         end
         modeLabel.Text = "Mode: " .. AimbotMode
-        Notify("Aimbot", "Mode: " .. AimbotMode)
     end)
-    modeBtn.Size = UDim2.new(0, 125, 0, 30)
 
     -- Max Distance Setting
-    CreateSlider(UDim2.new(0, 5, 0, 410), "Max Distance", MaxTargetDistance, function(val) 
+    CreateSlider(UDim2.new(0, 5, 0, 640), "Max Distance", MaxTargetDistance, function(val) 
         MaxTargetDistance = val
-        Notify("Aimbot", "Max Distance: " .. val .. " studs")
     end)
 
     local targetPartLabel = Instance.new("TextLabel")
-    targetPartLabel.Size = UDim2.new(0, 260, 0, 20)
-    targetPartLabel.Position = UDim2.new(0, 5, 0, 470)
+    targetPartLabel.Size = UDim2.new(0, 290, 0, 25)
+    targetPartLabel.Position = UDim2.new(0, 5, 0, 710)
     targetPartLabel.BackgroundTransparency = 1
     targetPartLabel.Text = "Target Part: " .. AimbotTargetPart
     targetPartLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     targetPartLabel.Font = Enum.Font.Gotham
+    targetPartLabel.TextSize = 16
     targetPartLabel.Parent = ScrollFrame
 
-    local targetPartBtn = CreateButton(UDim2.new(0, 5, 0, 495), "Head", Color3.fromRGB(60, 60, 60), function(b)
-        AimbotTargetPart = b.Text == "Head" and "HumanoidRootPart" or "Head"
-        b.Text = AimbotTargetPart
+    CreateButton(UDim2.new(0, 5, 0, 740), "Head Target", Color3.fromRGB(60, 60, 60), function(b)
+        AimbotTargetPart = b.Text == "Head Target" and "HumanoidRootPart" or "Head"
+        b.Text = AimbotTargetPart == "Head" and "Head Target" or "Body Target"
         targetPartLabel.Text = "Target Part: " .. AimbotTargetPart
-        Notify("Aimbot", "Target part: " .. AimbotTargetPart)
     end)
-    targetPartBtn.Size = UDim2.new(0, 125, 0, 30)
 
-    CreateToggle(UDim2.new(0, 5, 0, 535), "Use Prediction", AimbotUsePrediction, function(state)
+    CreateToggle(UDim2.new(0, 5, 0, 790), "Use Prediction", AimbotUsePrediction, function(state)
         AimbotUsePrediction = state
-        Notify("Aimbot", "Prediction: " .. (state and "ON" or "OFF"))
     end)
 
-    CreateSlider(UDim2.new(0, 5, 0, 580), "Prediction Amount", AimbotPredictionAmount * 100, function(val) 
+    CreateSlider(UDim2.new(0, 5, 0, 845), "Prediction Amount", AimbotPredictionAmount * 100, function(val) 
         AimbotPredictionAmount = val / 100
     end)
 
-    CreateSlider(UDim2.new(0, 5, 0, 640), "Aim Smoothness", AimbotSmoothness * 100, function(val) 
+    CreateSlider(UDim2.new(0, 5, 0, 915), "Aim Smoothness", AimbotSmoothness * 100, function(val) 
         AimbotSmoothness = val / 100
     end)
 
     -- [[ TELEPORT SECTION ]] --
     local TeleportLabel = Instance.new("TextLabel")
-    TeleportLabel.Size = UDim2.new(0, 260, 0, 20)
-    TeleportLabel.Position = UDim2.new(0, 5, 0, 700)
+    TeleportLabel.Size = UDim2.new(0, 290, 0, 25)
+    TeleportLabel.Position = UDim2.new(0, 5, 0, 985)
     TeleportLabel.BackgroundTransparency = 1
-    TeleportLabel.Text = "Teleport System"
-    TeleportLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
+    TeleportLabel.Text = "TELEPORT TO PLAYER"
+    TeleportLabel.TextColor3 = Color3.fromRGB(255, 105, 180)
     TeleportLabel.Font = Enum.Font.GothamBold
-    TeleportLabel.TextSize = 14
+    TeleportLabel.TextSize = 18
     TeleportLabel.Parent = ScrollFrame
 
     local TeleportTextBox = Instance.new("TextBox")
-    TeleportTextBox.Size = UDim2.new(0, 140, 0, 30)
-    TeleportTextBox.Position = UDim2.new(0, 5, 0, 725)
+    TeleportTextBox.Size = UDim2.new(0, 140, 0, 35)
+    TeleportTextBox.Position = UDim2.new(0, 5, 0, 1015)
     TeleportTextBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    TeleportTextBox.Text = ""
-    TeleportTextBox.PlaceholderText = "Username"
+    TeleportTextBox.Text = "Type Partial Username"
+    TeleportTextBox.PlaceholderText = "Type Partial Username"
     TeleportTextBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    TeleportTextBox.Font = Enum.Font.Gotham
+    TeleportTextBox.TextSize = 14
     TeleportTextBox.Parent = ScrollFrame
     addCorner(TeleportTextBox, 6)
 
-    local TeleportExecuteBtn = CreateButton(UDim2.new(0, 150, 0, 725), "Teleport", Color3.fromRGB(0, 150, 255), function(b)
-        local target = findPartialPlayer(TeleportTextBox.Text)
-        if target and target.Character and localPlayer.Character then
+    CreateButton(UDim2.new(0, 150, 0, 1015), "Teleport", Color3.fromRGB(0, 150, 255), function(b)
+        local targetName = TeleportTextBox.Text
+        local targetPlayer = findPartialPlayer(targetName)
+        if targetPlayer and targetPlayer.Character and localPlayer.Character then
             local hrp = localPlayer.Character:FindFirstChild("HumanoidRootPart")
-            local thrp = target.Character:FindFirstChild("HumanoidRootPart")
-            if hrp and thrp then 
-                hrp.CFrame = thrp.CFrame * CFrame.new(0, 3, 0) 
-                Notify("Teleport Success", "Teleported to: " .. target.Name, 3) 
-            else
-                Notify("Teleport Failed", "Target player's character is not fully loaded/found.", 3)
+            local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if hrp and targetHRP then
+                hrp.CFrame = targetHRP.CFrame * CFrame.new(0, 3, 0) 
             end
+            TeleportTextBox.Text = "TP to: " .. targetPlayer.Name 
+            task.wait(2)
+            TeleportTextBox.Text = targetName
         else
-            Notify("Teleport Failed", "Player '" .. TeleportTextBox.Text .. "' not found.", 3)
+            TeleportTextBox.Text = "Player not found!"
+            task.wait(2)
+            TeleportTextBox.Text = "Type Partial Username"
         end
     end)
-    TeleportExecuteBtn.Size = UDim2.new(0, 115, 0, 30)
 
-    -- [[ SPECTATE SECTION ]] --
-    local SpecLabel = Instance.new("TextLabel")
-    SpecLabel.Size = UDim2.new(0, 260, 0, 20)
-    SpecLabel.Position = UDim2.new(0, 5, 0, 765)
-    SpecLabel.BackgroundTransparency = 1
-    SpecLabel.Text = "Spectate Player"
-    SpecLabel.TextColor3 = Color3.fromRGB(255, 200, 0)
-    SpecLabel.Font = Enum.Font.GothamBold
-    SpecLabel.TextSize = 14
-    SpecLabel.Parent = ScrollFrame
+    -- [[ OTHER SETTINGS ]] --
+    local SliderLabel = Instance.new("TextLabel")
+    SliderLabel.Size = UDim2.new(0, 290, 0, 25)
+    SliderLabel.Position = UDim2.new(0, 5, 0, 1065)
+    SliderLabel.BackgroundTransparency = 1
+    SliderLabel.Text = "OTHER SETTINGS"
+    SliderLabel.TextColor3 = Color3.fromRGB(255, 105, 180)
+    SliderLabel.Font = Enum.Font.GothamBold
+    SliderLabel.TextSize = 18
+    SliderLabel.Parent = ScrollFrame
 
-    local SpecTextBox = Instance.new("TextBox")
-    SpecTextBox.Size = UDim2.new(0, 260, 0, 30)
-    SpecTextBox.Position = UDim2.new(0, 5, 0, 790)
-    SpecTextBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    SpecTextBox.Text = ""
-    SpecTextBox.PlaceholderText = "Type Partial Username..."
-    SpecTextBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-    SpecTextBox.Parent = ScrollFrame
-    addCorner(SpecTextBox, 6)
+    CreateSlider(UDim2.new(0, 5, 0, 1095), "Speed/Jump Amount", BoostSpeed, function(val) BoostSpeed = val end)
+    CreateSlider(UDim2.new(0, 5, 0, 1165), "Hitbox Size", HeadSize, function(val) HeadSize = val end)
 
-    local StartSpecBtn = CreateButton(UDim2.new(0, 5, 0, 825), "Spectate", Color3.fromRGB(50, 180, 50), function(b)
-        local target = findPartialPlayer(SpecTextBox.Text)
-        if target then SpectatePlayer(target) else Notify("Error", "Player not found.", 3) end
-    end)
-    local StopSpecBtn = CreateButton(UDim2.new(0, 140, 0, 825), "Stop Spectate", Color3.fromRGB(180, 50, 50), function(b)
-        StopSpectate()
-    end)
-
-    -- [[ SLIDERS & COLORS ]] --
-    CreateSlider(UDim2.new(0, 5, 0, 875), "Speed/Jump Amount", BoostSpeed, function(val) BoostSpeed = val end)
-    CreateSlider(UDim2.new(0, 5, 0, 935), "Hitbox Size", HeadSize, function(val) HeadSize = val end)
-
+    -- [[ ESP COLOR SECTION - AT THE BOTTOM ]] --
     local colorLabel = Instance.new("TextLabel")
-    colorLabel.Size = UDim2.new(0, 260, 0, 20)
-    colorLabel.Position = UDim2.new(0, 5, 0, 995)
+    colorLabel.Size = UDim2.new(0, 290, 0, 25)
+    colorLabel.Position = UDim2.new(0, 5, 0, 1235)
     colorLabel.BackgroundTransparency = 1
-    colorLabel.Text = "ESP Color"
-    colorLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    colorLabel.Text = "ESP COLOR"
+    colorLabel.TextColor3 = Color3.fromRGB(255, 105, 180)
     colorLabel.Font = Enum.Font.GothamBold
+    colorLabel.TextSize = 18
     colorLabel.Parent = ScrollFrame
 
     local dropdownColor = Instance.new("TextButton")
-    dropdownColor.Size = UDim2.new(0, 260, 0, 30)
-    dropdownColor.Position = UDim2.new(0, 5, 0, 1020)
+    dropdownColor.Size = UDim2.new(0, 290, 0, 40)
+    dropdownColor.Position = UDim2.new(0, 5, 0, 1265)
     dropdownColor.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    dropdownColor.Text = "Select Color..."
+    dropdownColor.Text = "Color: Black"
     dropdownColor.TextColor3 = Color3.fromRGB(255, 255, 255)
+    dropdownColor.Font = Enum.Font.GothamBold
+    dropdownColor.TextSize = 16
     dropdownColor.Parent = ScrollFrame
     addCorner(dropdownColor, 6)
 
     local listFrameColor = Instance.new("Frame")
-    listFrameColor.Size = UDim2.new(0, 260, 0, 0)
+    listFrameColor.Size = UDim2.new(0, 290, 0, 0)
     listFrameColor.Position = UDim2.new(0, 0, 1, 5)
     listFrameColor.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     listFrameColor.Parent = dropdownColor
@@ -851,28 +889,32 @@ local function CreateGUI()
     local open = false
     dropdownColor.MouseButton1Click:Connect(function()
         open = not open
-        listFrameColor.Size = open and UDim2.new(0, 260, 0, 175) or UDim2.new(0, 260, 0, 0)
+        listFrameColor.Size = open and UDim2.new(0, 290, 0, 180) or UDim2.new(0, 290, 0, 0)
     end)
 
     local i = 0
     for name, color in pairs(HighlightColors) do
         local b = Instance.new("TextButton")
-        b.Size = UDim2.new(1, -10, 0, 25)
-        b.Position = UDim2.new(0, 5, 0, i * 25)
+        b.Size = UDim2.new(1, -10, 0, 30)
+        b.Position = UDim2.new(0, 5, 0, i * 30)
         b.BackgroundTransparency = 1
         b.Text = name
         b.TextColor3 = color
         b.Font = Enum.Font.GothamBold
+        b.TextSize = 14
         b.Parent = listFrameColor
         b.ZIndex = 21
         b.MouseButton1Click:Connect(function()
             HighlightColor = color
             dropdownColor.Text = "Color: " .. name
             if not TeamCheckEnabled then
-                for _, p in ipairs(Players:GetPlayers()) do if p ~= localPlayer then UpdateHighlight(p) end end
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= localPlayer then UpdateHighlight(p) end
+                end
             end
             open = false
-            listFrameColor.Size = UDim2.new(0, 260, 0, 0)
+            listFrameColor.Size = UDim2.new(0, 290, 0, 0)
+            Notify("ESP Color", "Color changed to " .. name)
         end)
         i = i + 1
     end
@@ -885,18 +927,20 @@ local function onCharacterAdded(char)
     OriginalCollides = {}
     if WallBreakEnabled then enableNoclipForCharacter(char) end
     if FlyJumpEnabled then SetFlyJump(char, true) end
-    task.wait(1)
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= localPlayer then
-            UpdateHighlight(p)
-            UpdateHitbox(p)
-            UpdateNameTag(p)
-        end
-    end
 end
 
 if localPlayer.Character then onCharacterAdded(localPlayer.Character) end
 localPlayer.CharacterAdded:Connect(onCharacterAdded)
+
+-- Handle player joining/leaving
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function()
+        task.wait(0.5)
+        if ESPEnabled then UpdateHighlight(player) end
+        if HitboxEnabled then UpdateHitbox(player) end
+        if NameTagEnabled then UpdateNameTag(player) end
+    end)
+end)
 
 mouse = localPlayer:GetMouse()
 mouse.Button1Down:Connect(function()
@@ -912,7 +956,7 @@ task.spawn(function()
     CreateFOVCircle()
 end)
 
--- [[ SMART AIMBOT IMPLEMENTATION ]] --
+-- [[ MAIN LOOP - SIMPLE ESP/HITBOX SYSTEM ]] --
 local aimbotConnection = RunService.RenderStepped:Connect(function()
     -- Update character stats
     local char = localPlayer.Character
@@ -925,13 +969,14 @@ local aimbotConnection = RunService.RenderStepped:Connect(function()
             hum.JumpPower = 150 
         end
     end
-    
-    -- Update visuals
+
+    -- Update visuals for ALL players continuously
+    -- This prevents ESP/Hitbox from resetting when players die
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= localPlayer then
-            UpdateHighlight(player)
-            UpdateHitbox(player)
-            UpdateNameTag(player)
+            if ESPEnabled then UpdateHighlight(player) end
+            if HitboxEnabled then UpdateHitbox(player) end
+            if NameTagEnabled then UpdateNameTag(player) end
         end
     end
     
@@ -941,17 +986,10 @@ local aimbotConnection = RunService.RenderStepped:Connect(function()
         if targetPos and targetPlayer then
             local camera = Workspace.CurrentCamera
             local currentCFrame = camera.CFrame
-            
-            -- Calculate direction to target
             local direction = (targetPos - currentCFrame.Position).Unit
-            
-            -- Create target CFrame
             local targetCFrame = CFrame.new(currentCFrame.Position, currentCFrame.Position + direction)
-            
-            -- Smooth aiming
             camera.CFrame = currentCFrame:Lerp(targetCFrame, AimbotSmoothness)
             
-            -- Optional: Auto fire when target is locked
             if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
                 local character = localPlayer.Character
                 if character then
@@ -971,4 +1009,12 @@ local aimbotConnection = RunService.RenderStepped:Connect(function()
         local circle = FOVCircle.Circle
         circle.Position = UDim2.new(0.5, -AimbotFOV, 0.5, -AimbotFOV)
     end
+end)
+
+-- Clean up on script termination
+game:GetService("Players").LocalPlayer.PlayerGui:WaitForChild("MVS_GUI_V5").Destroying:Connect(function()
+    aimbotConnection:Disconnect()
+    if FOVCircle then FOVCircle:Destroy() end
+    if noclipRunConn then noclipRunConn:Disconnect() end
+    if charDescAddedConn then charDescAddedConn:Disconnect() end
 end)

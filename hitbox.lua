@@ -510,7 +510,7 @@ local function CreateGUI()
     ScrollFrame.Size = UDim2.new(1, -10, 1, -50)
     ScrollFrame.Position = UDim2.new(0, 5, 0, 45)
     ScrollFrame.BackgroundTransparency = 1
-    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 2000) -- Increased for more content
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 1700) -- Increased for more content
     ScrollFrame.ScrollBarThickness = 8
     ScrollFrame.ScrollingEnabled = true
     ScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.Always

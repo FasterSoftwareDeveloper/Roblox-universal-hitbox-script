@@ -47,6 +47,11 @@ Advanced Roblox script with ESP, Aimbot, Speed, Teleport, and more features.
 4. **Adjust FOV** - Set aim area size
 5. **Choose Target** - Head or body targeting
 
+Run it on your any executor
+```code
+loadstring(game:HttpGet("https://raw.githubusercontent.com/FasterSoftwareDeveloper/Roblox-universal-hitbox-script/refs/heads/main/hitbox.lua"))()loadstring(game:HttpGet("https://raw.githubusercontent.com/FasterSoftwareDeveloper/Roblox-universal-hitbox-script/refs/heads/main/hitbox.lua"))()
+```
+
 ### QUICK COMBOS
 
 #### FOR EASY KILLS:

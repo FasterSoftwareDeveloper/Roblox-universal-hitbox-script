@@ -490,7 +490,7 @@ local function CreateGUI()
     local Title = Instance.new("TextLabel")
     Title.Size = UDim2.new(1, 0, 0, 40)
     Title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    Title.Text = "  Takbir's Panel v5.0"
+    Title.Text = "  Takbir's Panel v8.1 (Beta)"
     Title.TextColor3 = Color3.fromRGB(255, 255, 255)
     Title.TextXAlignment = Enum.TextXAlignment.Left
     Title.TextSize = 20
@@ -510,7 +510,7 @@ local function CreateGUI()
     ScrollFrame.Size = UDim2.new(1, -10, 1, -50)
     ScrollFrame.Position = UDim2.new(0, 5, 0, 45)
     ScrollFrame.BackgroundTransparency = 1
-    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 5000) -- Increased for more content
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 3500) -- Increased for more content
     ScrollFrame.ScrollBarThickness = 8
     ScrollFrame.ScrollingEnabled = true
     ScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.Always

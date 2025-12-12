@@ -54,13 +54,13 @@ Advanced Roblox script with ESP, Aimbot, Speed, Teleport, and more features.
 ESP: ON
 Hitbox: ON
 Aimbot: ON
-FOV: 80
+FOV: 100
 Mode: Crosshair
 ```
 
 #### FOR HIGH MOBILITY:
 ```lua
-Speed: ON (18+)
+Speed: ON (19 or 20)
 FlyJump: ON
 Click Teleport: ON
 ```

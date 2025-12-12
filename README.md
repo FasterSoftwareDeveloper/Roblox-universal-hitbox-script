@@ -89,7 +89,7 @@ Shows team colors
 | Target Part | Head or Body | Head |
 | Mode | Crosshair or Closest | Crosshair |
 | Prediction | Track movement | ON |
-| Smoothness | Aim smoothness | 0.4 |
+| Smoothness | Aim smoothness | 60 |
 
 ### VISUAL SETTINGS
 | Setting | Description | Recommended |

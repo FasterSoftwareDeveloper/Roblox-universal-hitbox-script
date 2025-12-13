@@ -826,7 +826,7 @@ local function CreateGUI()
     local Title = Instance.new("TextLabel")
     Title.Size = UDim2.new(1, 0, 0, 40)
     Title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    Title.Text = "  Takbir's Panel v10.0 (Fixed Aimbot)"
+    Title.Text = "  Takbir's Panel v10.0 (Ai Aimbot)"
     Title.TextColor3 = Color3.fromRGB(255, 255, 255)
     Title.TextXAlignment = Enum.TextXAlignment.Left
     Title.TextSize = 20

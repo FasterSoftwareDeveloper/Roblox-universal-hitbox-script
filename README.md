@@ -142,7 +142,7 @@ Shows team colors
 | Mode | Crosshair or Closest | Crosshair | Crosshair |
 | Prediction | Track movement | ON | ON |
 | Smoothness | Aim smoothness | 60 | 60 |
-| Prediction Amount | Tracking amount | 30 | 30 |
+| Prediction Amount | Tracking amount | 18 | 17 |
 
 ### FREE CAMERA SETTINGS (NEW)
 | Setting | Description | Recommended | Default |

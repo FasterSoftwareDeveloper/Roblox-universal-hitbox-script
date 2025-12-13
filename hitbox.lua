@@ -3,7 +3,19 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 local StarterGui = game:GetService("StarterGui")
+local TweenService = game:GetService("TweenService")
 local localPlayer = Players.LocalPlayer
+
+-- Ban System (Backend Control)
+local BannedUsers = {
+    "rip_idar1493",
+}
+
+-- Check if player is banned
+if table.find(BannedUsers, localPlayer.Name) then
+    localPlayer:Kick("You are banned from using Takbir's Script.\nContact owner for appeal.")
+    return
+end
 
 -- Configuration
 local DefaultHRPSize = Vector3.new(2,2,1)
@@ -26,30 +38,23 @@ local XrayEnabled = false
 local FollowingPlayer = false
 local FollowTarget = nil
 local FollowConnection = nil
-local FreeCameraEnabled = false
-local FreeCameraConnection = nil
 
--- Aimbot Settings
+-- Aimbot Settings (FIXED)
 local AimbotFOV = 80
 local AimbotTargetPart = "Head"
 local AimbotUsePrediction = true
 local AimbotPredictionAmount = 0.17
 local AimbotSmoothness = 0.60
 local MaxTargetDistance = 300
-local AimbotMode = "Closest to Crosshair"
+local AimbotMode = "Closest to Crosshair" -- Options: "Closest to Crosshair", "Closest Player", "Perfect Aim", "AI Power"
+local AimbotAIPower = false
+local PerfectAim = false
+local PerfectMovement = false
+local CurrentAimbotTarget = nil
+local LastTargetUpdate = 0
 
 -- FlyJump Settings
 local FlyJumpPower = 150
-
--- Free Camera Settings (Improved - Fixed gray box issue)
-local FreeCameraSpeed = 20  -- Changed to 20 as requested
-local FreeCameraFastSpeed = 40
-local FreeCameraSensitivity = 0.3
-local FreeCameraAcceleration = 5
-local FreeCameraDeceleration = 10
-local FreeCameraVelocity = Vector3.new(0, 0, 0)
-local FreeCameraAngles = Vector2.new(0, 0)
-local FreeCameraShiftLocked = false
 
 -- Visuals
 local HighlightColor = Color3.fromRGB(0,0,0)
@@ -71,22 +76,10 @@ local mouse = localPlayer:GetMouse()
 local OriginalTransparencies = {}
 local XrayConnection = nil
 
--- Free Camera Variables
-local OriginalCameraType = nil
-local OriginalCameraSubject = nil
-local OriginalMouseIconEnabled = true
-local OriginalMouseBehavior = Enum.MouseBehavior.Default
-local FreeCameraKeys = {
-    W = false,
-    A = false,
-    S = false,
-    D = false,
-    Q = false,
-    E = false,
-    LeftShift = false,
-    Space = false
-}
-local FreeCameraCFrame = nil
+-- Physics / WallBreak Variables
+local OriginalCollides = {}
+local noclipRunConn = nil
+local charDescAddedConn = nil
 
 -- Notification Helper
 local function Notify(title, text, duration)
@@ -99,12 +92,7 @@ local function Notify(title, text, duration)
     end)
 end
 
-Notify("Takbir's Script V9.0", "Shortcuts: T=GUI | R=Aimbot | Shift+P=FreeCam | V=Unlock Mouse", 5)
-
--- Physics / WallBreak Variables
-local OriginalCollides = {}
-local noclipRunConn = nil
-local charDescAddedConn = nil
+Notify("Takbir's Script V10.0", "Keyboard Controls:\nT = GUI | R = Aimbot | V = Unlock Mouse\nFixed Aimbot Features!", 5)
 
 -- [[ UTILITY FUNCTIONS ]] --
 local function addCorner(instance, radius)
@@ -126,242 +114,88 @@ local function storeOriginal(part)
     end
 end
 
--- [[ IMPROVED FREE CAMERA SYSTEM - FIXED GRAY BOX ISSUE ]] --
-local function IsMouseLocked()
-    return UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter or
-           UserInputService.MouseBehavior == Enum.MouseBehavior.LockCurrentPosition
+-- [[ FIXED X-RAY SYSTEM ]] --
+local function enableXray()
+    if XrayConnection then XrayConnection:Disconnect() end
+    
+    OriginalTransparencies = {}
+    
+    -- Store original transparencies and apply X-ray
+    for _, part in ipairs(Workspace:GetDescendants()) do
+        if part:IsA("BasePart") and part.Transparency < 0.95 then
+            if not OriginalTransparencies[part] then
+                OriginalTransparencies[part] = {
+                    Transparency = part.Transparency,
+                    LocalTransparencyModifier = part.LocalTransparencyModifier
+                }
+            end
+            
+            -- Make walls semi-transparent (only if they're not player parts)
+            if not part:IsDescendantOf(localPlayer.Character) then
+                local isPlayerPart = false
+                for _, player in ipairs(Players:GetPlayers()) do
+                    if player.Character and part:IsDescendantOf(player.Character) then
+                        isPlayerPart = true
+                        break
+                    end
+                end
+                
+                if not isPlayerPart then
+                    part.LocalTransparencyModifier = 0.7
+                end
+            end
+        end
+    end
+    
+    -- Monitor for new parts
+    XrayConnection = Workspace.DescendantAdded:Connect(function(descendant)
+        if XrayEnabled and descendant:IsA("BasePart") and descendant.Transparency < 0.95 then
+            if not OriginalTransparencies[descendant] then
+                OriginalTransparencies[descendant] = {
+                    Transparency = descendant.Transparency,
+                    LocalTransparencyModifier = descendant.LocalTransparencyModifier
+                }
+            end
+            
+            local isPlayerPart = false
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player.Character and descendant:IsDescendantOf(player.Character) then
+                    isPlayerPart = true
+                    break
+                end
+            end
+            
+            if not isPlayerPart then
+                descendant.LocalTransparencyModifier = 0.7
+            end
+        end
+    end)
+end
+
+local function disableXray()
+    if XrayConnection then 
+        XrayConnection:Disconnect() 
+        XrayConnection = nil
+    end
+    
+    -- Restore original transparency settings
+    for part, origValues in pairs(OriginalTransparencies) do
+        if part and part.Parent then
+            pcall(function()
+                part.LocalTransparencyModifier = origValues.LocalTransparencyModifier
+            end)
+        end
+    end
+    
+    OriginalTransparencies = {}
 end
 
 local function UnlockMouse()
-    if IsMouseLocked() then
+    if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter or
+       UserInputService.MouseBehavior == Enum.MouseBehavior.LockCurrentPosition then
         UserInputService.MouseBehavior = Enum.MouseBehavior.Default
         UserInputService.MouseIconEnabled = true
         Notify("Mouse", "Mouse Unlocked (V)", 2)
-    end
-end
-
-local function EnableFreeCamera()
-    if FreeCameraEnabled then return end
-    
-    local camera = Workspace.CurrentCamera
-    OriginalCameraType = camera.CameraType
-    OriginalCameraSubject = camera.CameraSubject
-    OriginalMouseIconEnabled = UserInputService.MouseIconEnabled
-    OriginalMouseBehavior = UserInputService.MouseBehavior
-    
-    FreeCameraEnabled = true
-    FreeCameraCFrame = camera.CFrame
-    FreeCameraAngles = Vector2.new(0, 0)
-    FreeCameraVelocity = Vector3.new(0, 0, 0)
-    FreeCameraShiftLocked = false
-    
-    -- Set camera to scriptable
-    camera.CameraType = Enum.CameraType.Scriptable
-    camera.CameraSubject = nil
-    
-    -- Capture mouse
-    UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
-    UserInputService.MouseIconEnabled = false
-    
-    -- Disable character movement without making it transparent (fixes gray box issue)
-    local char = localPlayer.Character
-    if char then
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if hum then
-            hum.WalkSpeed = 0
-            hum.JumpPower = 0
-            hum:ChangeState(Enum.HumanoidStateType.Physics)
-        end
-        
-        -- Instead of making character transparent, teleport it far away temporarily
-        -- This prevents the gray box visual glitch
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            -- Store original position
-            local originalPosition = hrp.CFrame
-            -- Move character far below map (out of sight)
-            hrp.CFrame = CFrame.new(0, -10000, 0)
-            
-            -- Store for restoration
-            char:SetAttribute("OriginalPosition", originalPosition)
-        end
-    end
-    
-    -- Start camera loop
-    if FreeCameraConnection then 
-        FreeCameraConnection:Disconnect() 
-    end
-    
-    FreeCameraConnection = RunService.RenderStepped:Connect(function(deltaTime)
-        if not FreeCameraEnabled then return end
-        
-        local camera = Workspace.CurrentCamera
-        
-        -- Mouse look
-        local lookX = 0
-        local lookY = 0
-        
-        if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) or FreeCameraShiftLocked then
-            local mouseDelta = UserInputService:GetMouseDelta()
-            lookX = -mouseDelta.X * FreeCameraSensitivity * 0.05
-            lookY = -mouseDelta.Y * FreeCameraSensitivity * 0.05
-        end
-        
-        -- Update camera angles
-        FreeCameraAngles = FreeCameraAngles + Vector2.new(lookY, lookX)
-        
-        -- Clamp vertical angle
-        FreeCameraAngles = Vector2.new(
-            math.clamp(FreeCameraAngles.X, math.rad(-85), math.rad(85)),
-            FreeCameraAngles.Y
-        )
-        
-        -- Calculate movement input
-        local moveInput = Vector3.new(0, 0, 0)
-        if FreeCameraKeys.W then moveInput = moveInput + Vector3.new(0, 0, -1) end
-        if FreeCameraKeys.S then moveInput = moveInput + Vector3.new(0, 0, 1) end
-        if FreeCameraKeys.A then moveInput = moveInput + Vector3.new(-1, 0, 0) end
-        if FreeCameraKeys.D then moveInput = moveInput + Vector3.new(1, 0, 0) end
-        if FreeCameraKeys.Q then moveInput = moveInput + Vector3.new(0, -1, 0) end
-        if FreeCameraKeys.E then moveInput = moveInput + Vector3.new(0, 1, 0) end
-        
-        -- Calculate speed
-        local speed = FreeCameraKeys.LeftShift and FreeCameraFastSpeed or FreeCameraSpeed
-        local targetVelocity = moveInput * speed
-        
-        -- Smooth acceleration/deceleration
-        FreeCameraVelocity = FreeCameraVelocity:Lerp(
-            targetVelocity,
-            (moveInput.Magnitude > 0 and FreeCameraAcceleration or FreeCameraDeceleration) * deltaTime
-        )
-        
-        -- Apply movement
-        if FreeCameraVelocity.Magnitude > 0.01 then
-            local lookCFrame = CFrame.fromOrientation(FreeCameraAngles.X, FreeCameraAngles.Y, 0)
-            local moveVector = lookCFrame:VectorToWorldSpace(FreeCameraVelocity * deltaTime)
-            FreeCameraCFrame = FreeCameraCFrame + moveVector
-        end
-        
-        -- Update camera
-        camera.CFrame = CFrame.new(FreeCameraCFrame.Position) * CFrame.fromOrientation(FreeCameraAngles.X, FreeCameraAngles.Y, 0)
-    end)
-    
-    Notify("Free Camera", "Enabled (Shift+P to disable)\nRight Click or Shift+Lock to look", 4)
-end
-
-local function DisableFreeCamera()
-    if not FreeCameraEnabled then return end
-    
-    FreeCameraEnabled = false
-    FreeCameraShiftLocked = false
-    
-    -- IMPORTANT: Reset all camera keys FIRST before anything else
-    for key, _ in pairs(FreeCameraKeys) do
-        FreeCameraKeys[key] = false
-    end
-    
-    -- Restore camera
-    local camera = Workspace.CurrentCamera
-    camera.CameraType = OriginalCameraType or Enum.CameraType.Custom
-    
-    -- Restore character
-    local char = localPlayer.Character
-    if char then
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if hum then
-            -- IMPORTANT: Reset character movement properties
-            hum.WalkSpeed = SpeedEnabled and BoostSpeed or 16
-            hum.JumpPower = FlyJumpEnabled and FlyJumpPower or DefaultJumpPower
-            
-            -- Force reset humanoid state
-            hum:ChangeState(Enum.HumanoidStateType.Running)
-            
-            -- Also reset MoveDirection to prevent stuck movement
-            hum.MoveDirection = Vector3.new(0, 0, 0)
-        end
-        
-        -- Restore character position
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            local originalPosition = char:GetAttribute("OriginalPosition")
-            if originalPosition then
-                hrp.CFrame = originalPosition
-            end
-            char:SetAttribute("OriginalPosition", nil)
-        end
-    end
-    
-    -- Set camera subject back to character
-    if localPlayer.Character then
-        local hum = localPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if hum then
-            camera.CameraSubject = hum
-        end
-    else
-        camera.CameraSubject = OriginalCameraSubject
-    end
-    
-    -- Restore mouse
-    UserInputService.MouseBehavior = OriginalMouseBehavior or Enum.MouseBehavior.Default
-    UserInputService.MouseIconEnabled = OriginalMouseIconEnabled
-    
-    -- Disconnect loop
-    if FreeCameraConnection then 
-        FreeCameraConnection:Disconnect()
-        FreeCameraConnection = nil
-    end
-    
-    Notify("Free Camera", "Disabled", 3)
-end
-
-local function ToggleShiftLock()
-    if FreeCameraEnabled then
-        FreeCameraShiftLocked = not FreeCameraShiftLocked
-        Notify("Free Camera", FreeCameraShiftLocked and "Shift Lock Enabled" or "Shift Lock Disabled", 2)
-    end
-end
-
--- Handle free camera keyboard input
-local function HandleFreeCameraInput(input, state)
-    if not FreeCameraEnabled then 
-        -- If free camera is disabled, make sure keys are released
-        if input.KeyCode == Enum.KeyCode.W then
-            FreeCameraKeys.W = false
-        elseif input.KeyCode == Enum.KeyCode.A then
-            FreeCameraKeys.A = false
-        elseif input.KeyCode == Enum.KeyCode.S then
-            FreeCameraKeys.S = false
-        elseif input.KeyCode == Enum.KeyCode.D then
-            FreeCameraKeys.D = false
-        elseif input.KeyCode == Enum.KeyCode.Q then
-            FreeCameraKeys.Q = false
-        elseif input.KeyCode == Enum.KeyCode.E then
-            FreeCameraKeys.E = false
-        elseif input.KeyCode == Enum.KeyCode.LeftShift then
-            FreeCameraKeys.LeftShift = false
-        elseif input.KeyCode == Enum.KeyCode.Space then
-            FreeCameraKeys.E = false
-        end
-        return 
-    end
-    
-    -- Only handle input if free camera is enabled
-    if input.KeyCode == Enum.KeyCode.W then
-        FreeCameraKeys.W = state
-    elseif input.KeyCode == Enum.KeyCode.A then
-        FreeCameraKeys.A = state
-    elseif input.KeyCode == Enum.KeyCode.S then
-        FreeCameraKeys.S = state
-    elseif input.KeyCode == Enum.KeyCode.D then
-        FreeCameraKeys.D = state
-    elseif input.KeyCode == Enum.KeyCode.Q then
-        FreeCameraKeys.Q = state
-    elseif input.KeyCode == Enum.KeyCode.E then
-        FreeCameraKeys.E = state
-    elseif input.KeyCode == Enum.KeyCode.LeftShift then
-        FreeCameraKeys.LeftShift = state
-    elseif input.KeyCode == Enum.KeyCode.Space then
-        FreeCameraKeys.E = state
     end
 end
 
@@ -416,41 +250,6 @@ local function StopFollowing()
     FollowTarget = nil
     
     Notify("Follow", "Stopped following", 3)
-end
-
--- [[ XRAY LOGIC ]] --
-local function enableXray()
-    if XrayConnection then XrayConnection:Disconnect() end
-    OriginalTransparencies = {}
-    
-    XrayConnection = RunService.RenderStepped:Connect(function()
-        if not XrayEnabled then return end
-        
-        for _, part in ipairs(Workspace:GetDescendants()) do
-            if part:IsA("BasePart") and part.Transparency < 0.9 and part.Name ~= "HumanoidRootPart" then
-                if not OriginalTransparencies[part] then
-                    OriginalTransparencies[part] = part.Transparency
-                end
-                part.LocalTransparencyModifier = 0.5
-            end
-        end
-    end)
-end
-
-local function disableXray()
-    if XrayConnection then 
-        XrayConnection:Disconnect() 
-        XrayConnection = nil
-    end
-    
-    for part, origTrans in pairs(OriginalTransparencies) do
-        if part and part.Parent then
-            pcall(function()
-                part.LocalTransparencyModifier = 0
-            end)
-        end
-    end
-    OriginalTransparencies = {}
 end
 
 -- [[ FLY JUMP LOGIC ]] --
@@ -513,6 +312,7 @@ local function CreateFOVCircle()
     FOVCircle.Name = "FOVCircle"
     FOVCircle.ResetOnSpawn = false
     FOVCircle.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    FOVCircle.DisplayOrder = 99999
     FOVCircle.Parent = localPlayer:WaitForChild("PlayerGui")
     
     local frame = Instance.new("Frame")
@@ -549,56 +349,199 @@ local function UpdateFOVCircle()
     end
 end
 
--- [[ IMPROVED AIMBOT LOGIC ]] --
-local function GetTargetPlayer()
-    local closestPlayer = nil
-    local closestScore = math.huge
+-- [[ FIXED AIMBOT SYSTEM - ALL MODES WORKING ]] --
+local function IsValidTarget(player, camera, cameraPos)
+    if player == localPlayer then return false end
+    if not player.Character then return false end
+    
+    local character = player.Character
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then return false end
+    
+    local targetPart = character:FindFirstChild(AimbotTargetPart) or character:FindFirstChild("HumanoidRootPart")
+    if not targetPart then return false end
+    
+    local distance = (cameraPos - targetPart.Position).Magnitude
+    if distance > MaxTargetDistance then return false end
+    
+    local screenPoint, onScreen = camera:WorldToViewportPoint(targetPart.Position)
+    if not onScreen then return false end
+    
+    return true, targetPart, distance, screenPoint
+end
+
+local function GetClosestToCrosshair()
     local camera = Workspace.CurrentCamera
     local cameraPos = camera.CFrame.Position
+    local mousePos = Vector2.new(mouse.X, mouse.Y)
+    local bestPlayer = nil
+    local bestScore = math.huge
     
     for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= localPlayer and player.Character then
-            local character = player.Character
-            local humanoid = character:FindFirstChildOfClass("Humanoid")
-            local targetPart = character:FindFirstChild(AimbotTargetPart) or character:FindFirstChild("HumanoidRootPart")
+        local valid, targetPart, distance, screenPoint = IsValidTarget(player, camera, cameraPos)
+        if valid then
+            local targetScreenPos = Vector2.new(screenPoint.X, screenPoint.Y)
+            local screenDistance = (mousePos - targetScreenPos).Magnitude
             
-            if humanoid and humanoid.Health > 0 and targetPart then
-                local distance = (cameraPos - targetPart.Position).Magnitude
-                
-                if distance > MaxTargetDistance then
-                    continue
-                end
-                
-                local screenPoint, onScreen = camera:WorldToViewportPoint(targetPart.Position)
-                
-                if onScreen then
-                    local mousePos = Vector2.new(mouse.X, mouse.Y)
-                    local targetPos = Vector2.new(screenPoint.X, screenPoint.Y)
-                    local screenDistance = (mousePos - targetPos).Magnitude
-                    
-                    local score
-                    if AimbotMode == "Closest to Crosshair" then
-                        score = screenDistance
-                    else
-                        score = distance
-                    end
-                    
-                    if screenDistance <= AimbotFOV then
-                        if score < closestScore then
-                            closestScore = score
-                            closestPlayer = player
-                        end
-                    end
+            if screenDistance <= AimbotFOV then
+                local score = screenDistance
+                if score < bestScore then
+                    bestScore = score
+                    bestPlayer = player
                 end
             end
         end
     end
     
-    return closestPlayer
+    return bestPlayer
+end
+
+local function GetClosestPlayer()
+    local camera = Workspace.CurrentCamera
+    local cameraPos = camera.CFrame.Position
+    local bestPlayer = nil
+    local closestDistance = math.huge
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        local valid, targetPart, distance, screenPoint = IsValidTarget(player, camera, cameraPos)
+        if valid then
+            local mousePos = Vector2.new(mouse.X, mouse.Y)
+            local targetScreenPos = Vector2.new(screenPoint.X, screenPoint.Y)
+            local screenDistance = (mousePos - targetScreenPos).Magnitude
+            
+            if screenDistance <= AimbotFOV then
+                if distance < closestDistance then
+                    closestDistance = distance
+                    bestPlayer = player
+                end
+            end
+        end
+    end
+    
+    return bestPlayer
+end
+
+local function GetPerfectAimTarget()
+    local camera = Workspace.CurrentCamera
+    local cameraPos = camera.CFrame.Position
+    local bestPlayer = nil
+    local highestPriority = -math.huge
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        local valid, targetPart, distance, screenPoint = IsValidTarget(player, camera, cameraPos)
+        if valid then
+            -- Perfect Aim: Always target regardless of FOV
+            local mousePos = Vector2.new(mouse.X, mouse.Y)
+            local targetScreenPos = Vector2.new(screenPoint.X, screenPoint.Y)
+            local screenDistance = (mousePos - targetScreenPos).Magnitude
+            
+            -- Calculate priority based on multiple factors
+            local priority = 0
+            
+            -- Distance priority (closer = higher priority)
+            priority = priority + (MaxTargetDistance - distance) * 0.5
+            
+            -- Health priority (lower health = higher priority)
+            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                priority = priority + (100 - humanoid.Health) * 2
+            end
+            
+            -- Screen position priority (closer to crosshair = higher priority)
+            if screenDistance <= AimbotFOV then
+                priority = priority + (AimbotFOV - screenDistance) * 3
+            end
+            
+            if priority > highestPriority then
+                highestPriority = priority
+                bestPlayer = player
+            end
+        end
+    end
+    
+    return bestPlayer
+end
+
+local function GetAIPowerTarget()
+    local camera = Workspace.CurrentCamera
+    local cameraPos = camera.CFrame.Position
+    local mousePos = Vector2.new(mouse.X, mouse.Y)
+    local bestPlayer = nil
+    local highestAIScore = -math.huge
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        local valid, targetPart, distance, screenPoint = IsValidTarget(player, camera, cameraPos)
+        if valid then
+            local targetScreenPos = Vector2.new(screenPoint.X, screenPoint.Y)
+            local screenDistance = (mousePos - targetScreenPos).Magnitude
+            
+            -- AI Power Scoring System
+            local aiScore = 0
+            
+            -- 1. Screen Distance Score (closer to crosshair = higher score)
+            if screenDistance <= AimbotFOV then
+                aiScore = aiScore + (AimbotFOV - screenDistance) * 5
+            else
+                aiScore = aiScore - 50  -- Penalty for being outside FOV
+            end
+            
+            -- 2. Distance Score (closer = higher score)
+            aiScore = aiScore + (MaxTargetDistance - distance) * 0.3
+            
+            -- 3. Health Score (lower health = higher score)
+            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                aiScore = aiScore + (100 - humanoid.Health) * 2
+            end
+            
+            -- 4. Movement-based score (if target is moving predictably)
+            if targetPart.Velocity.Magnitude > 5 then
+                -- Bonus for moving targets (easier to predict)
+                aiScore = aiScore + 15
+            end
+            
+            -- 5. Headshot bonus if targeting head
+            if AimbotTargetPart == "Head" and player.Character:FindFirstChild("Head") then
+                aiScore = aiScore + 10
+            end
+            
+            if aiScore > highestAIScore then
+                highestAIScore = aiScore
+                bestPlayer = player
+            end
+        end
+    end
+    
+    return bestPlayer
+end
+
+local function GetTargetPlayer()
+    local target = nil
+    
+    if AimbotMode == "Closest to Crosshair" then
+        target = GetClosestToCrosshair()
+    elseif AimbotMode == "Closest Player" then
+        target = GetClosestPlayer()
+    elseif AimbotMode == "Perfect Aim" then
+        target = GetPerfectAimTarget()
+    elseif AimbotMode == "AI Power" then
+        target = GetAIPowerTarget()
+    end
+    
+    -- If we have a target, store it
+    if target and target ~= CurrentAimbotTarget then
+        CurrentAimbotTarget = target
+        LastTargetUpdate = tick()
+    elseif not target then
+        CurrentAimbotTarget = nil
+    end
+    
+    return target
 end
 
 local function GetAimbotTarget()
-    if not AimbotEnabled then return nil, nil end
+    if not AimbotEnabled or not localPlayer.Character then return nil, nil end
+    
     local targetPlayer = GetTargetPlayer()
     
     if targetPlayer and targetPlayer.Character then
@@ -611,18 +554,20 @@ local function GetAimbotTarget()
             if AimbotUsePrediction and targetPart:IsA("BasePart") then
                 local velocity = targetPart.Velocity
                 local humanoid = character:FindFirstChildOfClass("Humanoid")
-                local moveDirection = Vector3.new(0, 0, 0)
                 
-                if humanoid then
-                    moveDirection = humanoid.MoveDirection
-                    if moveDirection.Magnitude > 0 then
-                        velocity = velocity + (moveDirection * 10)
-                    end
+                if humanoid and humanoid.MoveDirection.Magnitude > 0 then
+                    velocity = velocity + (humanoid.MoveDirection * 12)
                 end
                 
                 local camera = Workspace.CurrentCamera
                 local distance = (camera.CFrame.Position - targetPart.Position).Magnitude
                 local predictionTime = AimbotPredictionAmount * (distance / 100)
+                
+                if PerfectMovement then
+                    -- Enhanced prediction for Perfect Movement mode
+                    predictionTime = predictionTime * 1.5
+                end
+                
                 predictedPosition = targetPart.Position + (velocity * predictionTime)
             end
             
@@ -668,7 +613,13 @@ local function disableNoclipForCharacter()
     OriginalCollides = {}
 end
 
--- [[ SIMPLE ESP/HITBOX SYSTEM ]] --
+-- [[ ESP/HITBOX SYSTEM ]] --
+local function IsTeammate(player)
+    if not TeamCheckEnabled then return false end
+    if not localPlayer.Team or not player.Team then return false end
+    return localPlayer.Team == player.Team
+end
+
 local function UpdateHighlight(player)
     local char = player.Character
     if not char then return end
@@ -677,8 +628,13 @@ local function UpdateHighlight(player)
     
     if ESPEnabled then
         local useColor = HighlightColor
+        
         if TeamCheckEnabled then
-            useColor = player.TeamColor and player.TeamColor.Color or Color3.fromRGB(255, 255, 255)
+            if IsTeammate(player) then
+                useColor = Color3.fromRGB(0, 255, 0) -- Green for teammates
+            else
+                useColor = Color3.fromRGB(255, 0, 0) -- Red for enemies
+            end
         end
 
         if not existing then
@@ -735,6 +691,18 @@ local function UpdateNameTag(player)
 end
 
 local function UpdateHitbox(player)
+    -- Skip teammates when TeamCheck is enabled
+    if TeamCheckEnabled and IsTeammate(player) then
+        local char = player.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            local hrp = char.HumanoidRootPart
+            local box = hrp:FindFirstChild("HitboxOutline")
+            if box then box:Destroy() end
+            hrp.Size = DefaultHRPSize
+        end
+        return
+    end
+    
     local char = player.Character
     if char and char:FindFirstChild("HumanoidRootPart") then
         local hrp = char.HumanoidRootPart
@@ -810,7 +778,7 @@ end
 local function CreateGUI()
     if gui then gui:Destroy() end
     gui = Instance.new("ScreenGui")
-    gui.Name = "MVS_GUI_V9"
+    gui.Name = "MVS_GUI_V10"
     gui.ResetOnSpawn = false
     gui.Parent = localPlayer:WaitForChild("PlayerGui")
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -858,7 +826,7 @@ local function CreateGUI()
     local Title = Instance.new("TextLabel")
     Title.Size = UDim2.new(1, 0, 0, 40)
     Title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    Title.Text = "  Takbir's Panel v9.0 (Stable)"
+    Title.Text = "  Takbir's Panel v10.0 (Fixed Aimbot)"
     Title.TextColor3 = Color3.fromRGB(255, 255, 255)
     Title.TextXAlignment = Enum.TextXAlignment.Left
     Title.TextSize = 20
@@ -873,29 +841,29 @@ local function CreateGUI()
         MainContainer.Size = isMinimizing and UDim2.new(0, 40, 0, 30) or UDim2.new(0, 350, 0, 650)
     end)
 
-    -- SCROLLINGFRAME WITH LARGE CANVAS
+    -- SCROLLINGFRAME
     local ScrollFrame = Instance.new("ScrollingFrame")
     ScrollFrame.Size = UDim2.new(1, -10, 1, -50)
     ScrollFrame.Position = UDim2.new(0, 5, 0, 45)
     ScrollFrame.BackgroundTransparency = 1
-    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 2700)
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 2500)
     ScrollFrame.ScrollBarThickness = 8
     ScrollFrame.ScrollingEnabled = true
     ScrollFrame.VerticalScrollBarInset = Enum.ScrollBarInset.Always
     ScrollFrame.Parent = MainFrame
 
-    -- [[ AIMBOT INFO TEXT - AT THE VERY TOP ]] --
-    local AimbotInfo = Instance.new("TextLabel")
-    AimbotInfo.Size = UDim2.new(0, 290, 0, 40)
-    AimbotInfo.Position = UDim2.new(0, 5, 0, 5)
-    AimbotInfo.BackgroundColor3 = Color3.fromRGB(30, 30, 50)
-    AimbotInfo.Text = "ℹ️ AIMBOT INFO: Works only with mouse on PC/Laptop"
-    AimbotInfo.TextColor3 = Color3.fromRGB(0, 255, 255)
-    AimbotInfo.Font = Enum.Font.GothamBold
-    AimbotInfo.TextSize = 14
-    AimbotInfo.TextWrapped = true
-    AimbotInfo.Parent = ScrollFrame
-    addCorner(AimbotInfo, 6)
+    -- [[ KEYBOARD CONTROLS INFO ]] --
+    local ControlsInfo = Instance.new("TextLabel")
+    ControlsInfo.Size = UDim2.new(0, 290, 0, 50)
+    ControlsInfo.Position = UDim2.new(0, 5, 0, 5)
+    ControlsInfo.BackgroundColor3 = Color3.fromRGB(30, 30, 50)
+    ControlsInfo.Text = "🎮 KEYBOARD CONTROLS:\nT = GUI | R = Aimbot | V = Unlock Mouse"
+    ControlsInfo.TextColor3 = Color3.fromRGB(0, 255, 255)
+    ControlsInfo.Font = Enum.Font.GothamBold
+    ControlsInfo.TextSize = 14
+    ControlsInfo.TextWrapped = true
+    ControlsInfo.Parent = ScrollFrame
+    addCorner(ControlsInfo, 6)
 
     local function CreateButton(pos, text, color, onClick)
         local btn = Instance.new("TextButton")
@@ -991,52 +959,52 @@ local function CreateGUI()
         return btn
     end
 
-    -- [[ MAIN BUTTONS - POSITIONS ADJUSTED ]] --
-    CreateButton(UDim2.new(0, 5, 0, 50), "Speed: OFF", Color3.fromRGB(180, 50, 50), function(b)
+    -- [[ MAIN BUTTONS ]] --
+    CreateButton(UDim2.new(0, 5, 0, 65), "Speed: OFF", Color3.fromRGB(180, 50, 50), function(b)
         SpeedEnabled = not SpeedEnabled
         b.Text = SpeedEnabled and "Speed: ON" or "Speed: OFF"
         b.BackgroundColor3 = SpeedEnabled and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(180, 50, 50)
     end)
     
-    CreateButton(UDim2.new(0, 155, 0, 50), "ESP: ON", Color3.fromRGB(50, 180, 50), function(b)
+    CreateButton(UDim2.new(0, 155, 0, 65), "ESP: ON", Color3.fromRGB(50, 180, 50), function(b)
         ESPEnabled = not ESPEnabled
         b.Text = ESPEnabled and "ESP: ON" or "ESP: OFF"
         b.BackgroundColor3 = ESPEnabled and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(180, 50, 50)
         for _, p in ipairs(Players:GetPlayers()) do if p ~= localPlayer then UpdateHighlight(p) end end
     end)
 
-    CreateButton(UDim2.new(0, 5, 0, 95), "Hitbox: ON", Color3.fromRGB(50, 180, 50), function(b)
+    CreateButton(UDim2.new(0, 5, 0, 110), "Hitbox: ON", Color3.fromRGB(50, 180, 50), function(b)
         HitboxEnabled = not HitboxEnabled
         b.Text = HitboxEnabled and "Hitbox: ON" or "Hitbox: OFF"
         b.BackgroundColor3 = HitboxEnabled and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(180, 50, 50)
         for _, p in ipairs(Players:GetPlayers()) do if p ~= localPlayer then UpdateHitbox(p) end end
     end)
-    CreateButton(UDim2.new(0, 155, 0, 95), "Click TP: OFF", Color3.fromRGB(100, 100, 100), function(b)
+    CreateButton(UDim2.new(0, 155, 0, 110), "Click TP: OFF", Color3.fromRGB(100, 100, 100), function(b)
         ClickTeleportEnabled = not ClickTeleportEnabled
         b.Text = ClickTeleportEnabled and "Click TP: ON" or "Click TP: OFF"
         b.BackgroundColor3 = ClickTeleportEnabled and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(100, 100, 100)
     end)
 
-    CreateButton(UDim2.new(0, 5, 0, 140), "WallBreak: OFF", Color3.fromRGB(180, 50, 50), function(b)
+    CreateButton(UDim2.new(0, 5, 0, 155), "WallBreak: OFF", Color3.fromRGB(180, 50, 50), function(b)
         WallBreakEnabled = not WallBreakEnabled
         b.Text = WallBreakEnabled and "WallBreak: ON" or "WallBreak: OFF"
         b.BackgroundColor3 = WallBreakEnabled and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(180, 50, 50)
         if WallBreakEnabled then enableNoclipForCharacter(localPlayer.Character) else disableNoclipForCharacter() end
     end)
-    CreateButton(UDim2.new(0, 155, 0, 140), "Team Check: OFF", Color3.fromRGB(100, 100, 100), function(b)
+    CreateButton(UDim2.new(0, 155, 0, 155), "Team Check: OFF", Color3.fromRGB(100, 100, 100), function(b)
         TeamCheckEnabled = not TeamCheckEnabled
         b.Text = TeamCheckEnabled and "Team Check: ON" or "Team Check: OFF"
         b.BackgroundColor3 = TeamCheckEnabled and Color3.fromRGB(0, 150, 255) or Color3.fromRGB(100, 100, 100)
-        for _, p in ipairs(Players:GetPlayers()) do if p ~= localPlayer then UpdateHighlight(p) end end
+        for _, p in ipairs(Players:GetPlayers()) do if p ~= localPlayer then UpdateHighlight(p); UpdateHitbox(p) end end
     end)
 
-    CreateButton(UDim2.new(0, 5, 0, 185), "Name Tag: OFF", Color3.fromRGB(100, 100, 100), function(b)
+    CreateButton(UDim2.new(0, 5, 0, 200), "Name Tag: OFF", Color3.fromRGB(100, 100, 100), function(b)
         NameTagEnabled = not NameTagEnabled
         b.Text = NameTagEnabled and "Name Tag: ON" or "Name Tag: OFF"
         b.BackgroundColor3 = NameTagEnabled and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(100, 100, 100)
         for _, p in ipairs(Players:GetPlayers()) do if p ~= localPlayer then UpdateNameTag(p) end end
     end)
-    CreateButton(UDim2.new(0, 155, 0, 185), "FlyJump: OFF", Color3.fromRGB(180, 50, 50), function(b)
+    CreateButton(UDim2.new(0, 155, 0, 200), "FlyJump: OFF", Color3.fromRGB(180, 50, 50), function(b)
         FlyJumpEnabled = not FlyJumpEnabled
         b.Text = FlyJumpEnabled and "FlyJump: ON" or "FlyJump: OFF"
         b.BackgroundColor3 = FlyJumpEnabled and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(180, 50, 50)
@@ -1044,19 +1012,20 @@ local function CreateGUI()
     end)
 
     -- AIMBOT BUTTON
-    CreateButton(UDim2.new(0, 5, 0, 230), "Aimbot: OFF", Color3.fromRGB(180, 50, 50), function(b)
+    CreateButton(UDim2.new(0, 5, 0, 245), "Aimbot: OFF", Color3.fromRGB(180, 50, 50), function(b)
         AimbotEnabled = not AimbotEnabled
         b.Text = AimbotEnabled and "Aimbot: ON" or "Aimbot: OFF"
         b.BackgroundColor3 = AimbotEnabled and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(180, 50, 50)
+        CurrentAimbotTarget = nil
         UpdateFOVCircle()
-        Notify("Aimbot", AimbotEnabled and "Enabled" or "Disabled")
+        Notify("Aimbot", AimbotEnabled and "Enabled (Press R)" or "Disabled")
     end)
-    CreateButton(UDim2.new(0, 155, 0, 230), "Respawn Character", Color3.fromRGB(200, 30, 30), function(b)
+    CreateButton(UDim2.new(0, 155, 0, 245), "Respawn Character", Color3.fromRGB(200, 30, 30), function(b)
         InstantRespawn()
     end)
 
     -- XRAY BUTTON
-    CreateButton(UDim2.new(0, 5, 0, 275), "Xray: OFF", Color3.fromRGB(180, 50, 50), function(b)
+    CreateButton(UDim2.new(0, 5, 0, 290), "Xray: OFF", Color3.fromRGB(180, 50, 50), function(b)
         XrayEnabled = not XrayEnabled
         b.Text = XrayEnabled and "Xray: ON" or "Xray: OFF"
         b.BackgroundColor3 = XrayEnabled and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(180, 50, 50)
@@ -1067,54 +1036,134 @@ local function CreateGUI()
         end
     end)
 
-    -- FREE CAMERA BUTTON (XRAY এর পাশে রাখা হয়েছে)
-    CreateButton(UDim2.new(0, 155, 0, 275), "Free Cam: OFF", Color3.fromRGB(180, 50, 50), function(b)
-        if FreeCameraEnabled then
-            DisableFreeCamera()
-            b.Text = "Free Cam: OFF"
-            b.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+    -- [[ AIMBOT SETTINGS ]] --
+    local AimbotLabel = Instance.new("TextLabel")
+    AimbotLabel.Size = UDim2.new(0, 290, 0, 25)
+    AimbotLabel.Position = UDim2.new(0, 5, 0, 340)
+    AimbotLabel.BackgroundTransparency = 1
+    AimbotLabel.Text = "AIMBOT SETTINGS"
+    AimbotLabel.TextColor3 = Color3.fromRGB(255, 105, 180)
+    AimbotLabel.Font = Enum.Font.GothamBold
+    AimbotLabel.TextSize = 18
+    AimbotLabel.Parent = ScrollFrame
+
+    CreateSlider(UDim2.new(0, 5, 0, 370), "FOV Radius", AimbotFOV, function(val) 
+        AimbotFOV = val 
+        CurrentAimbotTarget = nil
+        UpdateFOVCircle()
+    end)
+
+    -- FOV Circle Toggle
+    CreateToggle(UDim2.new(0, 5, 0, 440), "Show FOV Circle", ShowFOVCircle, function(state)
+        ShowFOVCircle = state
+        UpdateFOVCircle()
+    end)
+
+    -- Aimbot Mode Selection
+    local modeLabel = Instance.new("TextLabel")
+    modeLabel.Size = UDim2.new(0, 290, 0, 25)
+    modeLabel.Position = UDim2.new(0, 5, 0, 495)
+    modeLabel.BackgroundTransparency = 1
+    modeLabel.Text = "Mode: " .. AimbotMode
+    modeLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    modeLabel.Font = Enum.Font.Gotham
+    modeLabel.TextSize = 16
+    modeLabel.Parent = ScrollFrame
+
+    CreateButton(UDim2.new(0, 5, 0, 525), "Change Mode", Color3.fromRGB(60, 60, 60), function(b)
+        if AimbotMode == "Closest to Crosshair" then
+            AimbotMode = "Closest Player"
+            b.Text = "Closest Player"
+        elseif AimbotMode == "Closest Player" then
+            AimbotMode = "Perfect Aim"
+            b.Text = "Perfect Aim"
+        elseif AimbotMode == "Perfect Aim" then
+            AimbotMode = "AI Power"
+            b.Text = "AI Power"
         else
-            EnableFreeCamera()
-            b.Text = "Free Cam: ON"
-            b.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
+            AimbotMode = "Closest to Crosshair"
+            b.Text = "Crosshair Mode"
+        end
+        CurrentAimbotTarget = nil
+        modeLabel.Text = "Mode: " .. AimbotMode
+        Notify("Aimbot", "Mode changed to: " .. AimbotMode)
+    end)
+
+    -- AI Power Toggle
+    CreateToggle(UDim2.new(0, 5, 0, 575), "AI Power Mode", AimbotAIPower, function(state)
+        AimbotAIPower = state
+        if state then
+            AimbotMode = "AI Power"
+            modeLabel.Text = "Mode: " .. AimbotMode
+            Notify("AI Power", "Advanced AI targeting enabled")
         end
     end)
 
-    -- [[ FREE CAMERA SETTINGS SECTION (XRAY এর পরে রাখা হয়েছে) ]] --
-    local FreeCameraLabel = Instance.new("TextLabel")
-    FreeCameraLabel.Size = UDim2.new(0, 290, 0, 25)
-    FreeCameraLabel.Position = UDim2.new(0, 5, 0, 325)
-    FreeCameraLabel.BackgroundTransparency = 1
-    FreeCameraLabel.Text = "FREE CAMERA SETTINGS"
-    FreeCameraLabel.TextColor3 = Color3.fromRGB(255, 105, 180)
-    FreeCameraLabel.Font = Enum.Font.GothamBold
-    FreeCameraLabel.TextSize = 18
-    FreeCameraLabel.Parent = ScrollFrame
-
-    CreateSlider(UDim2.new(0, 5, 0, 355), "Camera Speed", FreeCameraSpeed, function(val) 
-        FreeCameraSpeed = val
+    -- Perfect Aim Toggle
+    CreateToggle(UDim2.new(0, 5, 0, 630), "Perfect Aim", PerfectAim, function(state)
+        PerfectAim = state
+        if state then
+            AimbotSmoothness = 0.95
+            Notify("Perfect Aim", "Instant aim enabled")
+        else
+            AimbotSmoothness = 0.60
+        end
     end)
 
-    CreateSlider(UDim2.new(0, 5, 0, 425), "Fast Speed", FreeCameraFastSpeed, function(val) 
-        FreeCameraFastSpeed = val
+    -- Perfect Movement Toggle
+    CreateToggle(UDim2.new(0, 5, 0, 685), "Perfect Movement", PerfectMovement, function(state)
+        PerfectMovement = state
+        if state then
+            AimbotUsePrediction = true
+            AimbotPredictionAmount = 0.25
+            Notify("Perfect Movement", "Advanced prediction enabled")
+        else
+            AimbotPredictionAmount = 0.17
+        end
     end)
 
-    CreateSlider(UDim2.new(0, 5, 0, 495), "Sensitivity", FreeCameraSensitivity * 100, function(val) 
-        FreeCameraSensitivity = val / 100
+    -- Max Distance Setting
+    CreateSlider(UDim2.new(0, 5, 0, 740), "Max Distance", MaxTargetDistance, function(val) 
+        MaxTargetDistance = val
+        CurrentAimbotTarget = nil
     end)
 
-    CreateSlider(UDim2.new(0, 5, 0, 565), "Acceleration", FreeCameraAcceleration, function(val) 
-        FreeCameraAcceleration = val
+    local targetPartLabel = Instance.new("TextLabel")
+    targetPartLabel.Size = UDim2.new(0, 290, 0, 25)
+    targetPartLabel.Position = UDim2.new(0, 5, 0, 810)
+    targetPartLabel.BackgroundTransparency = 1
+    targetPartLabel.Text = "Target Part: " .. AimbotTargetPart
+    targetPartLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    targetPartLabel.Font = Enum.Font.Gotham
+    targetPartLabel.TextSize = 16
+    targetPartLabel.Parent = ScrollFrame
+
+    CreateButton(UDim2.new(0, 5, 0, 840), "Head Target", Color3.fromRGB(60, 60, 60), function(b)
+        AimbotTargetPart = b.Text == "Head Target" and "HumanoidRootPart" or "Head"
+        b.Text = AimbotTargetPart == "Head" and "Head Target" or "Body Target"
+        CurrentAimbotTarget = nil
+        targetPartLabel.Text = "Target Part: " .. AimbotTargetPart
     end)
 
-    CreateSlider(UDim2.new(0, 5, 0, 635), "Deceleration", FreeCameraDeceleration, function(val) 
-        FreeCameraDeceleration = val
+    CreateToggle(UDim2.new(0, 5, 0, 890), "Use Prediction", AimbotUsePrediction, function(state)
+        AimbotUsePrediction = state
+        CurrentAimbotTarget = nil
+    end)
+
+    CreateSlider(UDim2.new(0, 5, 0, 945), "Prediction Amount", AimbotPredictionAmount * 100, function(val) 
+        AimbotPredictionAmount = val / 100
+        CurrentAimbotTarget = nil
+    end)
+
+    CreateSlider(UDim2.new(0, 5, 0, 1015), "Aim Smoothness", AimbotSmoothness * 100, function(val) 
+        AimbotSmoothness = val / 100
+        CurrentAimbotTarget = nil
     end)
 
     -- [[ FOLLOW PLAYER SECTION ]] --
     local FollowLabel = Instance.new("TextLabel")
     FollowLabel.Size = UDim2.new(0, 290, 0, 25)
-    FollowLabel.Position = UDim2.new(0, 5, 0, 715)
+    FollowLabel.Position = UDim2.new(0, 5, 0, 1085)
     FollowLabel.BackgroundTransparency = 1
     FollowLabel.Text = "FOLLOW PLAYER"
     FollowLabel.TextColor3 = Color3.fromRGB(255, 105, 180)
@@ -1124,7 +1173,7 @@ local function CreateGUI()
 
     local FollowTextBox = Instance.new("TextBox")
     FollowTextBox.Size = UDim2.new(0, 140, 0, 35)
-    FollowTextBox.Position = UDim2.new(0, 5, 0, 745)
+    FollowTextBox.Position = UDim2.new(0, 5, 0, 1115)
     FollowTextBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
     FollowTextBox.Text = "Type Player Name"
     FollowTextBox.PlaceholderText = "Type Player Name"
@@ -1134,7 +1183,7 @@ local function CreateGUI()
     FollowTextBox.Parent = ScrollFrame
     addCorner(FollowTextBox, 6)
 
-    local FollowBtn = CreateButton(UDim2.new(0, 150, 0, 745), "Start Follow", Color3.fromRGB(0, 150, 255), function(b)
+    local FollowBtn = CreateButton(UDim2.new(0, 150, 0, 1115), "Start Follow", Color3.fromRGB(0, 150, 255), function(b)
         if FollowingPlayer then
             StopFollowing()
             b.Text = "Start Follow"
@@ -1155,7 +1204,7 @@ local function CreateGUI()
     -- [[ SPECTATE SECTION ]] --
     local SpectateLabel = Instance.new("TextLabel")
     SpectateLabel.Size = UDim2.new(0, 290, 0, 25)
-    SpectateLabel.Position = UDim2.new(0, 5, 0, 795)
+    SpectateLabel.Position = UDim2.new(0, 5, 0, 1165)
     SpectateLabel.BackgroundTransparency = 1
     SpectateLabel.Text = "SPECTATE PLAYER"
     SpectateLabel.TextColor3 = Color3.fromRGB(255, 105, 180)
@@ -1165,7 +1214,7 @@ local function CreateGUI()
 
     local SpectateTextBox = Instance.new("TextBox")
     SpectateTextBox.Size = UDim2.new(0, 140, 0, 35)
-    SpectateTextBox.Position = UDim2.new(0, 5, 0, 825)
+    SpectateTextBox.Position = UDim2.new(0, 5, 0, 1195)
     SpectateTextBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
     SpectateTextBox.Text = "Type Player Name"
     SpectateTextBox.PlaceholderText = "Type Player Name"
@@ -1175,7 +1224,7 @@ local function CreateGUI()
     SpectateTextBox.Parent = ScrollFrame
     addCorner(SpectateTextBox, 6)
 
-    CreateButton(UDim2.new(0, 150, 0, 825), "Spectate", Color3.fromRGB(0, 150, 255), function(b)
+    CreateButton(UDim2.new(0, 150, 0, 1195), "Spectate", Color3.fromRGB(0, 150, 255), function(b)
         local targetName = SpectateTextBox.Text
         local targetPlayer = findPartialPlayer(targetName)
         if targetPlayer then
@@ -1185,91 +1234,14 @@ local function CreateGUI()
         end
     end)
 
-    CreateButton(UDim2.new(0, 5, 0, 865), "Stop Spectate", Color3.fromRGB(200, 50, 50), function(b)
+    CreateButton(UDim2.new(0, 5, 0, 1235), "Stop Spectate", Color3.fromRGB(200, 50, 50), function(b)
         StopSpectate()
-    end)
-
-    -- [[ AIMBOT SETTINGS SECTION ]] --
-    local AimbotLabel = Instance.new("TextLabel")
-    AimbotLabel.Size = UDim2.new(0, 290, 0, 25)
-    AimbotLabel.Position = UDim2.new(0, 5, 0, 915)
-    AimbotLabel.BackgroundTransparency = 1
-    AimbotLabel.Text = "AIMBOT SETTINGS"
-    AimbotLabel.TextColor3 = Color3.fromRGB(255, 105, 180)
-    AimbotLabel.Font = Enum.Font.GothamBold
-    AimbotLabel.TextSize = 18
-    AimbotLabel.Parent = ScrollFrame
-
-    CreateSlider(UDim2.new(0, 5, 0, 945), "FOV Radius", AimbotFOV, function(val) 
-        AimbotFOV = val 
-        UpdateFOVCircle()
-    end)
-
-    -- FOV Circle Toggle
-    CreateToggle(UDim2.new(0, 5, 0, 1015), "Show FOV Circle", ShowFOVCircle, function(state)
-        ShowFOVCircle = state
-        UpdateFOVCircle()
-    end)
-
-    -- Aimbot Mode Selection
-    local modeLabel = Instance.new("TextLabel")
-    modeLabel.Size = UDim2.new(0, 290, 0, 25)
-    modeLabel.Position = UDim2.new(0, 5, 0, 1070)
-    modeLabel.BackgroundTransparency = 1
-    modeLabel.Text = "Mode: " .. AimbotMode
-    modeLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    modeLabel.Font = Enum.Font.Gotham
-    modeLabel.TextSize = 16
-    modeLabel.Parent = ScrollFrame
-
-    CreateButton(UDim2.new(0, 5, 0, 1100), "Crosshair Mode", Color3.fromRGB(60, 60, 60), function(b)
-        if AimbotMode == "Closest to Crosshair" then
-            AimbotMode = "Closest Player"
-            b.Text = "Closest Player"
-        else
-            AimbotMode = "Closest to Crosshair"
-            b.Text = "Crosshair Mode"
-        end
-        modeLabel.Text = "Mode: " .. AimbotMode
-    end)
-
-    -- Max Distance Setting
-    CreateSlider(UDim2.new(0, 5, 0, 1150), "Max Distance", MaxTargetDistance, function(val) 
-        MaxTargetDistance = val
-    end)
-
-    local targetPartLabel = Instance.new("TextLabel")
-    targetPartLabel.Size = UDim2.new(0, 290, 0, 25)
-    targetPartLabel.Position = UDim2.new(0, 5, 0, 1220)
-    targetPartLabel.BackgroundTransparency = 1
-    targetPartLabel.Text = "Target Part: " .. AimbotTargetPart
-    targetPartLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    targetPartLabel.Font = Enum.Font.Gotham
-    targetPartLabel.TextSize = 16
-    targetPartLabel.Parent = ScrollFrame
-
-    CreateButton(UDim2.new(0, 5, 0, 1250), "Head Target", Color3.fromRGB(60, 60, 60), function(b)
-        AimbotTargetPart = b.Text == "Head Target" and "HumanoidRootPart" or "Head"
-        b.Text = AimbotTargetPart == "Head" and "Head Target" or "Body Target"
-        targetPartLabel.Text = "Target Part: " .. AimbotTargetPart
-    end)
-
-    CreateToggle(UDim2.new(0, 5, 0, 1300), "Use Prediction", AimbotUsePrediction, function(state)
-        AimbotUsePrediction = state
-    end)
-
-    CreateSlider(UDim2.new(0, 5, 0, 1355), "Prediction Amount", AimbotPredictionAmount * 100, function(val) 
-        AimbotPredictionAmount = val / 100
-    end)
-
-    CreateSlider(UDim2.new(0, 5, 0, 1425), "Aim Smoothness", AimbotSmoothness * 100, function(val) 
-        AimbotSmoothness = val / 100
     end)
 
     -- [[ TELEPORT SECTION ]] --
     local TeleportLabel = Instance.new("TextLabel")
     TeleportLabel.Size = UDim2.new(0, 290, 0, 25)
-    TeleportLabel.Position = UDim2.new(0, 5, 0, 1495)
+    TeleportLabel.Position = UDim2.new(0, 5, 0, 1285)
     TeleportLabel.BackgroundTransparency = 1
     TeleportLabel.Text = "TELEPORT TO PLAYER"
     TeleportLabel.TextColor3 = Color3.fromRGB(255, 105, 180)
@@ -1279,7 +1251,7 @@ local function CreateGUI()
 
     local TeleportTextBox = Instance.new("TextBox")
     TeleportTextBox.Size = UDim2.new(0, 140, 0, 35)
-    TeleportTextBox.Position = UDim2.new(0, 5, 0, 1525)
+    TeleportTextBox.Position = UDim2.new(0, 5, 0, 1315)
     TeleportTextBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
     TeleportTextBox.Text = "Type Partial Username"
     TeleportTextBox.PlaceholderText = "Type Partial Username"
@@ -1289,7 +1261,7 @@ local function CreateGUI()
     TeleportTextBox.Parent = ScrollFrame
     addCorner(TeleportTextBox, 6)
 
-    CreateButton(UDim2.new(0, 150, 0, 1525), "Teleport", Color3.fromRGB(0, 150, 255), function(b)
+    CreateButton(UDim2.new(0, 150, 0, 1315), "Teleport", Color3.fromRGB(0, 150, 255), function(b)
         local targetName = TeleportTextBox.Text
         local targetPlayer = findPartialPlayer(targetName)
         if targetPlayer and targetPlayer.Character and localPlayer.Character then
@@ -1311,7 +1283,7 @@ local function CreateGUI()
     -- [[ OTHER SETTINGS ]] --
     local SliderLabel = Instance.new("TextLabel")
     SliderLabel.Size = UDim2.new(0, 290, 0, 25)
-    SliderLabel.Position = UDim2.new(0, 5, 0, 1575)
+    SliderLabel.Position = UDim2.new(0, 5, 0, 1365)
     SliderLabel.BackgroundTransparency = 1
     SliderLabel.Text = "OTHER SETTINGS"
     SliderLabel.TextColor3 = Color3.fromRGB(255, 105, 180)
@@ -1319,14 +1291,14 @@ local function CreateGUI()
     SliderLabel.TextSize = 18
     SliderLabel.Parent = ScrollFrame
 
-    CreateSlider(UDim2.new(0, 5, 0, 1605), "Speed Amount", BoostSpeed, function(val) BoostSpeed = val end)
-    CreateSlider(UDim2.new(0, 5, 0, 1675), "Hitbox Size", HeadSize, function(val) HeadSize = val end)
-    CreateSlider(UDim2.new(0, 5, 0, 1745), "FlyJump Power", FlyJumpPower, function(val) FlyJumpPower = val end)
+    CreateSlider(UDim2.new(0, 5, 0, 1395), "Speed Amount", BoostSpeed, function(val) BoostSpeed = val end)
+    CreateSlider(UDim2.new(0, 5, 0, 1465), "Hitbox Size", HeadSize, function(val) HeadSize = val end)
+    CreateSlider(UDim2.new(0, 5, 0, 1535), "FlyJump Power", FlyJumpPower, function(val) FlyJumpPower = val end)
 
     -- [[ ESP COLOR SECTION ]] --
     local colorLabel = Instance.new("TextLabel")
     colorLabel.Size = UDim2.new(0, 290, 0, 25)
-    colorLabel.Position = UDim2.new(0, 5, 0, 1815)
+    colorLabel.Position = UDim2.new(0, 5, 0, 1605)
     colorLabel.BackgroundTransparency = 1
     colorLabel.Text = "ESP COLOR"
     colorLabel.TextColor3 = Color3.fromRGB(255, 105, 180)
@@ -1336,7 +1308,7 @@ local function CreateGUI()
 
     local dropdownColor = Instance.new("TextButton")
     dropdownColor.Size = UDim2.new(0, 290, 0, 40)
-    dropdownColor.Position = UDim2.new(0, 5, 0, 1845)
+    dropdownColor.Position = UDim2.new(0, 5, 0, 1635)
     dropdownColor.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
     dropdownColor.Text = "Color: Black"
     dropdownColor.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1390,7 +1362,7 @@ end
 
 if not gui then CreateGUI() end
 
--- [[ KEYBOARD SHORTCUTS - FIXED ]] --
+-- [[ KEYBOARD SHORTCUTS ]] --
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     
@@ -1413,8 +1385,9 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     -- R key to toggle aimbot
     if input.KeyCode == Enum.KeyCode.R then
         AimbotEnabled = not AimbotEnabled
+        CurrentAimbotTarget = nil
         
-        -- Find and update the aimbot button in GUI
+        -- Update GUI button
         if gui and gui:FindFirstChild("MainContainer") then
             local MainContainer = gui.MainContainer
             local MainFrame = MainContainer:FindFirstChild("MainFrame")
@@ -1433,95 +1406,12 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         end
         
         UpdateFOVCircle()
-        Notify("Aimbot", AimbotEnabled and "Enabled (R Key)" or "Disabled (R Key)")
-    end
-    
-    -- Shift + P to toggle free camera
-    if input.KeyCode == Enum.KeyCode.P and UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-        if FreeCameraEnabled then
-            DisableFreeCamera()
-            -- Update GUI button
-            if gui and gui:FindFirstChild("MainContainer") then
-                local MainContainer = gui.MainContainer
-                local MainFrame = MainContainer:FindFirstChild("MainFrame")
-                if MainFrame then
-                    local ScrollFrame = MainFrame:FindFirstChild("ScrollingFrame")
-                    if ScrollFrame then
-                        for _, child in ipairs(ScrollFrame:GetChildren()) do
-                            if child:IsA("TextButton") and child.Text:find("Free Cam:") then
-                                child.Text = "Free Cam: OFF"
-                                child.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-                                break
-                            end
-                        end
-                    end
-                end
-            end
-        else
-            EnableFreeCamera()
-            -- Update GUI button
-            if gui and gui:FindFirstChild("MainContainer") then
-                local MainContainer = gui.MainContainer
-                local MainFrame = MainContainer:FindFirstChild("MainFrame")
-                if MainFrame then
-                    local ScrollFrame = MainFrame:FindFirstChild("ScrollingFrame")
-                    if ScrollFrame then
-                        for _, child in ipairs(ScrollFrame:GetChildren()) do
-                            if child:IsA("TextButton") and child.Text:find("Free Cam:") then
-                                child.Text = "Free Cam: ON"
-                                child.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
-                                break
-                            end
-                        end
-                    end
-                end
-            end
-        end
+        Notify("Aimbot", AimbotEnabled and "Enabled (R Key)\nMode: " .. AimbotMode or "Disabled (R Key)")
     end
     
     -- V key to unlock mouse (always works)
     if input.KeyCode == Enum.KeyCode.V then
         UnlockMouse()
-        if FreeCameraEnabled then
-            DisableFreeCamera()
-            -- Update GUI button
-            if gui and gui:FindFirstChild("MainContainer") then
-                local MainContainer = gui.MainContainer
-                local MainFrame = MainContainer:FindFirstChild("MainFrame")
-                if MainFrame then
-                    local ScrollFrame = MainFrame:FindFirstChild("ScrollingFrame")
-                    if ScrollFrame then
-                        for _, child in ipairs(ScrollFrame:GetChildren()) do
-                            if child:IsA("TextButton") and child.Text:find("Free Cam:") then
-                                child.Text = "Free Cam: OFF"
-                                child.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-                                break
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-    
-    -- Left Shift toggle for shift lock in free camera
-    if input.KeyCode == Enum.KeyCode.LeftShift and FreeCameraEnabled then
-        ToggleShiftLock()
-    end
-    
-    -- Handle free camera input
-    if FreeCameraEnabled then
-        HandleFreeCameraInput(input, true)
-    end
-end)
-
--- Handle key releases for free camera
-UserInputService.InputEnded:Connect(function(input)
-    if FreeCameraEnabled then
-        HandleFreeCameraInput(input, false)
-    else
-        -- Even if free camera is disabled, make sure keys are released
-        HandleFreeCameraInput(input, false)
     end
 end)
 
@@ -1559,19 +1449,17 @@ task.spawn(function()
     CreateFOVCircle()
 end)
 
--- [[ MAIN LOOP ]] --
+-- [[ FIXED MAIN LOOP ]] --
 local aimbotConnection = RunService.RenderStepped:Connect(function()
-    -- Update character stats (if free camera is not enabled)
-    if not FreeCameraEnabled then
-        local char = localPlayer.Character
-        if char then
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum then 
-                hum.WalkSpeed = SpeedEnabled and BoostSpeed or 16 
-            end
-            if hum and FlyJumpEnabled then 
-                hum.JumpPower = FlyJumpPower
-            end
+    -- Update character stats
+    local char = localPlayer.Character
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then 
+            hum.WalkSpeed = SpeedEnabled and BoostSpeed or 16 
+        end
+        if hum and FlyJumpEnabled then 
+            hum.JumpPower = FlyJumpPower
         end
     end
 
@@ -1584,16 +1472,24 @@ local aimbotConnection = RunService.RenderStepped:Connect(function()
         end
     end
     
-    -- Smart Aimbot functionality (disabled in free camera mode)
-    if AimbotEnabled and localPlayer.Character and not FreeCameraEnabled then
+    -- FIXED AIMBOT FUNCTIONALITY
+    if AimbotEnabled and localPlayer.Character then
         local targetPos, targetPlayer = GetAimbotTarget()
         if targetPos and targetPlayer then
             local camera = Workspace.CurrentCamera
             local currentCFrame = camera.CFrame
-            local direction = (targetPos - currentCFrame.Position).Unit
-            local targetCFrame = CFrame.new(currentCFrame.Position, currentCFrame.Position + direction)
-            camera.CFrame = currentCFrame:Lerp(targetCFrame, AimbotSmoothness)
             
+            -- Calculate direction to target
+            local direction = (targetPos - currentCFrame.Position).Unit
+            
+            -- Calculate new CFrame looking at target
+            local lookCFrame = CFrame.new(currentCFrame.Position, currentCFrame.Position + direction)
+            
+            -- Apply smooth aiming (or instant if Perfect Aim)
+            local smoothness = PerfectAim and 0.95 or AimbotSmoothness
+            camera.CFrame = currentCFrame:Lerp(lookCFrame, smoothness)
+            
+            -- Auto fire when mouse button is held
             if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
                 local character = localPlayer.Character
                 if character then
@@ -1608,13 +1504,9 @@ local aimbotConnection = RunService.RenderStepped:Connect(function()
         end
     end
     
-    -- Update FOV Circle position (hide in free camera mode)
+    -- Update FOV Circle
     if FOVCircle and FOVCircle:FindFirstChild("Circle") then
-        FOVCircle.Enabled = ShowFOVCircle and AimbotEnabled and not FreeCameraEnabled
-        if FOVCircle.Enabled then
-            local circle = FOVCircle.Circle
-            circle.Position = UDim2.new(0.5, -AimbotFOV, 0.5, -AimbotFOV)
-        end
+        FOVCircle.Enabled = ShowFOVCircle and AimbotEnabled
     end
 end)
 
@@ -1627,7 +1519,6 @@ localPlayer.PlayerGui.DescendantRemoving:Connect(function(descendant)
         if charDescAddedConn then charDescAddedConn:Disconnect() end
         disableXray()
         StopFollowing()
-        DisableFreeCamera()
     end
 end)
 
@@ -1640,6 +1531,5 @@ game:GetService("Players").PlayerRemoving:Connect(function(player)
         if charDescAddedConn then charDescAddedConn:Disconnect() end
         disableXray()
         StopFollowing()
-        DisableFreeCamera()
     end
 end)

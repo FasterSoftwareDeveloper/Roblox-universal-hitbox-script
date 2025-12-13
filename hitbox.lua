@@ -33,13 +33,13 @@ local FreeCameraConnection = nil
 local AimbotFOV = 80
 local AimbotTargetPart = "Head"
 local AimbotUsePrediction = true
-local AimbotPredictionAmount = 0.30
+local AimbotPredictionAmount = 0.17
 local AimbotSmoothness = 0.60
 local MaxTargetDistance = 300
 local AimbotMode = "Closest to Crosshair"
 
 -- FlyJump Settings
-local FlyJumpPower = 300
+local FlyJumpPower = 150
 
 -- Free Camera Settings (Improved - Fixed gray box issue)
 local FreeCameraSpeed = 20  -- Changed to 20 as requested

@@ -92,7 +92,7 @@ local function Notify(title, text, duration)
     end)
 end
 
-Notify("Takbir's Script V10.0", "Keyboard Controls:\nT = GUI | R = Aimbot | V = Unlock Mouse\nAiAimbot Features!", 5)
+Notify("Takbir's Script V10.0", "Keyboard Controls:\nT = GUI | R = Aimbot | V = Unlock Mouse\nAi Aimbot Features!", 5)
 
 -- [[ UTILITY FUNCTIONS ]] --
 local function addCorner(instance, radius)
